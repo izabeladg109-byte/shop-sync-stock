@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   MOVEMENT_SOURCES,
   useAuditLogs,
@@ -12,7 +12,9 @@ import {
   useStockEdits,
   useUndoMovement,
 } from "@/lib/erp";
+import { ALL_PLATFORMS, usePlatformFilter, usePlatforms } from "@/lib/platforms";
 import { ColorDot, KitSwatches } from "@/components/kit-swatches";
+import { PlatformBadge } from "@/components/platform-filter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -82,6 +84,12 @@ function HistoricoPage() {
   const [direction, setDirection] = useState(ALL);
   const [source, setSource] = useState(ALL);
   const [term, setTerm] = useState("");
+  const { data: platforms = [] } = usePlatforms();
+  const { platformId: globalPlatform } = usePlatformFilter();
+  const [platform, setPlatform] = useState(ALL);
+  useEffect(() => {
+    setPlatform(globalPlatform === ALL_PLATFORMS ? ALL : globalPlatform);
+  }, [globalPlatform]);
   const [showFilters, setShowFilters] = useState(false);
 
   const filtered = useMemo(() => {
@@ -98,13 +106,14 @@ function HistoricoPage() {
       if (kind !== ALL && m.kind !== kind) return false;
       if (direction !== ALL && m.direction !== direction) return false;
       if (source !== ALL && m.source !== source) return false;
+      if (platform !== ALL && (m.platform_id ?? "") !== platform) return false;
       if (q) {
         const hay = [m.note, m.order_ref, m.user_name].filter(Boolean).join(" ").toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
     });
-  }, [movements, from, fromTime, to, toTime, skuId, colorId, sizeId, kind, direction, source, term]);
+  }, [movements, from, fromTime, to, toTime, skuId, colorId, sizeId, kind, direction, source, platform, term]);
 
   const skuColors = skuId === ALL ? colors : colors.filter((c) => c.sku_id === skuId);
   const skuSizes = skuId === ALL ? sizes : sizes.filter((s) => s.sku_id === skuId);
@@ -126,6 +135,7 @@ function HistoricoPage() {
     setKind(ALL);
     setDirection(ALL);
     setSource(ALL);
+    setPlatform(ALL);
     setTerm("");
   }
 
@@ -325,6 +335,23 @@ function HistoricoPage() {
               </SelectContent>
             </Select>
           </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Plataforma</Label>
+            <Select value={platform} onValueChange={setPlatform}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>Todas as plataformas</SelectItem>
+                <SelectItem value="">Sem plataforma (geral)</SelectItem>
+                {platforms.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Input
@@ -369,6 +396,7 @@ function HistoricoPage() {
                 <th className="px-3 py-2 text-left font-medium">Data e hora</th>
                 <th className="px-3 py-2 text-left font-medium">Usuário</th>
                 <th className="px-3 py-2 text-left font-medium">Origem</th>
+                <th className="px-3 py-2 text-left font-medium">Plataforma</th>
                 <th className="px-3 py-2 text-left font-medium">SKU</th>
                 <th className="px-3 py-2 text-left font-medium">Item</th>
                 <th className="px-3 py-2 text-center font-medium">Tam.</th>
@@ -385,6 +413,9 @@ function HistoricoPage() {
                   <td className="px-3 py-2 text-xs">{m.user_name ?? "—"}</td>
                   <td className="px-3 py-2 text-xs">
                     {MOVEMENT_SOURCES[m.source] ?? m.source}
+                  </td>
+                  <td className="px-3 py-2">
+                    <PlatformBadge platformId={m.platform_id ?? null} />
                   </td>
                   <td className="px-3 py-2 text-xs">
                     {skus.find((s) => s.id === m.sku_id)?.seller_sku ?? "—"}
@@ -422,7 +453,7 @@ function HistoricoPage() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="py-8 text-center text-sm text-muted-foreground">
+                  <td colSpan={11} className="py-8 text-center text-sm text-muted-foreground">
                     Nenhuma movimentação para os filtros selecionados.
                   </td>
                 </tr>

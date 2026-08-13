@@ -87,6 +87,7 @@ export type Movement = {
   stock_before: number | null;
   stock_after: number | null;
   user_name: string | null;
+  platform_id: string | null;
 };
 export type AuditLog = {
   id: string;
@@ -111,6 +112,7 @@ export type StockEdit = {
   kind: string;
   note: string | null;
   user_name: string | null;
+  platform_id: string | null;
   created_at: string;
 };
 
@@ -321,7 +323,14 @@ export function invalidateKeys(qc: QueryClient, keys: string[]) {
   for (const key of new Set(keys)) void qc.invalidateQueries({ queryKey: [key] });
 }
 
-const STOCK_KEYS = ["stock_units", "kit_stock", "movements", "audit_logs", "stock_edits"];
+const STOCK_KEYS = [
+  "stock_units",
+  "kit_stock",
+  "movements",
+  "audit_logs",
+  "stock_edits",
+  "stock_allocations",
+];
 
 export function useCrud(table: TableName) {
   const qc = useQueryClient();
@@ -428,6 +437,8 @@ export type MovementInput = {
   note?: string;
   source?: string;
   order_ref?: string;
+  /** reserva de plataforma afetada junto com o estoque geral */
+  platform_id?: string | null;
 };
 
 export function useApplyMovement() {
@@ -446,6 +457,7 @@ export function useApplyMovement() {
         p_source: input.source ?? "manual",
         ...(input.note ? { p_note: input.note } : {}),
         ...(input.order_ref ? { p_order_ref: input.order_ref } : {}),
+        ...(input.platform_id ? { p_platform_id: input.platform_id } : {}),
       });
       if (error) throw new Error(error.message);
       return data as string;
@@ -770,6 +782,7 @@ export function useApplyGrade() {
       affect_units: boolean;
       affect_formed: boolean;
       note?: string;
+      platform_id?: string | null;
     }) => {
       const ids: string[] = [];
       for (const row of input.rows) {
@@ -785,6 +798,7 @@ export function useApplyGrade() {
           p_affect_formed: input.affect_formed,
           p_source: "grade",
           ...(input.note ? { p_note: input.note } : {}),
+          ...(input.platform_id ? { p_platform_id: input.platform_id } : {}),
         });
         if (error) throw new Error(error.message);
         ids.push(data as string);

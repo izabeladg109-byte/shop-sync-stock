@@ -34,6 +34,8 @@ import {
 import { DataList, Kpi, type ListRow, RankPanel, SectionTitle } from "@/components/dash";
 import { FilterBar, useFilters } from "@/components/filter-bar";
 import { ColorDot, KitSwatches } from "@/components/kit-swatches";
+import { PlatformFilter } from "@/components/platform-filter";
+import { useAllocations, usePlatformFilter, viewStock } from "@/lib/platforms";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -355,8 +357,20 @@ function SugestoesPage() {
   const { data: sizes = [] } = useSizes();
   const { data: kits = [] } = useKits();
   const { data: kitColors = [] } = useKitColors();
-  const { data: stock = [] } = useStockUnits();
-  const { data: movements = [] } = useMovements(1000);
+  const { data: rawStock = [] } = useStockUnits();
+  const { data: allMovements = [] } = useMovements(1000);
+  const { data: allocations = [] } = useAllocations();
+  const { platformId, isAll: allPlatforms } = usePlatformFilter();
+
+  /** Com plataforma selecionada, as sugestões olham só a parcela reservada. */
+  const stock = useMemo(
+    () => viewStock(rawStock, allocations, platformId),
+    [rawStock, allocations, platformId],
+  );
+  const movements = useMemo(
+    () => (allPlatforms ? allMovements : allMovements.filter((m) => m.platform_id === platformId)),
+    [allMovements, allPlatforms, platformId],
+  );
 
   const { state, setState, range } = useFilters("30d");
   const scopeIds = useMemo(() => skuIdsInScope(state.scope, skus), [state.scope, skus]);
@@ -587,6 +601,15 @@ function SugestoesPage() {
           alterado automaticamente — todas as sugestões são informativas.
         </p>
       </header>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <PlatformFilter />
+        {!allPlatforms && (
+          <span className="text-xs text-muted-foreground">
+            Sugestões calculadas apenas sobre o estoque reservado e as vendas desta plataforma.
+          </span>
+        )}
+      </div>
 
       <FilterBar state={state} setState={setState} categories={categories} skus={skus} />
 
