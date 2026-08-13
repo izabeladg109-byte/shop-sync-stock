@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   alertLevel,
@@ -20,7 +20,9 @@ import {
   useUndoMovement,
   MOVEMENT_SOURCES,
 } from "@/lib/erp";
+import { ALL_PLATFORMS, usePlatformFilter, usePlatforms } from "@/lib/platforms";
 import { ColorDot, KitSwatches } from "@/components/kit-swatches";
+import { PlatformBadge, PlatformPicker } from "@/components/platform-filter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -104,6 +106,15 @@ function MovimentacaoPage() {
   const applyMovement = useApplyMovement();
   const applyGrade = useApplyGrade();
   const undo = useUndoMovement();
+
+  const { data: platforms = [] } = usePlatforms();
+  const { platformId: globalPlatform } = usePlatformFilter();
+  /** plataforma da movimentação: começa no filtro global e pode ser trocada */
+  const [platform, setPlatform] = useState<string>(ALL_PLATFORMS);
+  const movementPlatform = platform === ALL_PLATFORMS ? null : platform;
+  useEffect(() => {
+    setPlatform(globalPlatform);
+  }, [globalPlatform]);
 
   const [mode, setMode] = useState<Mode>("unit");
   const [direction, setDirection] = useState<"in" | "out">("out");
@@ -206,6 +217,7 @@ function MovimentacaoPage() {
         affect_units: changeStock,
         affect_formed: false,
         ...(note.trim() ? { note: note.trim() } : {}),
+        platform_id: movementPlatform,
       });
       toastWithUndo(
         direction === "in" ? "↑ Entrada — grade lançada" : "↓ Saída — grade lançada",
@@ -235,6 +247,7 @@ function MovimentacaoPage() {
       affect_formed: false,
       ...(note.trim() ? { note: note.trim() } : {}),
       source: "manual",
+      platform_id: movementPlatform,
     });
     toastWithUndo(
       direction === "in" ? "↑ Entrada registrada" : "↓ Saída registrada",
@@ -277,6 +290,22 @@ function MovimentacaoPage() {
               ? "Kit: movimenta unidades e kits juntos — o kit abate diretamente as cores que o compõem, sem estoque paralelo."
               : "Grade: lança de uma vez todos os tamanhos de uma cor, usando a grade padrão do SKU."}
         </p>
+
+        {platforms.length > 0 && (
+          <div className="space-y-2">
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+              Plataforma
+            </Label>
+            <PlatformPicker value={platform} onChange={setPlatform} className="w-full sm:w-64" />
+            <p className="text-xs text-muted-foreground">
+              {movementPlatform
+                ? direction === "in"
+                  ? "A entrada soma no estoque geral e já reserva a mesma quantidade para esta plataforma."
+                  : "A saída abate o estoque geral e a reserva desta plataforma (bloqueia se não houver reserva suficiente)."
+                : "Sem plataforma: movimenta apenas o estoque geral, sem mexer em reservas."}
+            </p>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-2">
           <Button
@@ -570,6 +599,7 @@ function MovimentacaoPage() {
                 <th className="px-3 py-2 text-left font-medium">Item</th>
                 <th className="px-3 py-2 text-center font-medium">Tam.</th>
                 <th className="px-3 py-2 text-center font-medium">Qtd.</th>
+                <th className="px-3 py-2 text-left font-medium">Plataforma</th>
                 <th className="px-3 py-2 text-left font-medium">Origem</th>
                 <th className="px-3 py-2 text-right font-medium">Ação</th>
               </tr>
@@ -596,6 +626,9 @@ function MovimentacaoPage() {
                       {m.qty}
                     </span>
                   </td>
+                  <td className="px-3 py-2">
+                    <PlatformBadge platformId={m.platform_id ?? null} />
+                  </td>
                   <td className="px-3 py-2 text-xs">{MOVEMENT_SOURCES[m.source] ?? m.source}</td>
                   <td className="px-3 py-2 text-right">
                     {m.undone_at ? (
@@ -610,7 +643,7 @@ function MovimentacaoPage() {
               ))}
               {todayRows.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
+                  <td colSpan={8} className="py-8 text-center text-sm text-muted-foreground">
                     Nenhuma movimentação registrada hoje.
                   </td>
                 </tr>

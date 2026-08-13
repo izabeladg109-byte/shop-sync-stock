@@ -68,6 +68,8 @@ import {
   tooltipStyle,
 } from "@/components/dash";
 import { FilterBar, useFilters } from "@/components/filter-bar";
+import { PlatformFilter } from "@/components/platform-filter";
+import { useAllocations, usePlatformFilter, usePlatforms, viewStock } from "@/lib/platforms";
 import { KitSwatches } from "@/components/kit-swatches";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -176,8 +178,24 @@ function Dashboard() {
   const { data: sizes = [] } = useSizes();
   const { data: kits = [] } = useKits();
   const { data: kitColors = [] } = useKitColors();
-  const { data: stock = [] } = useStockUnits();
-  const { data: movements = [] } = useMovements(1000);
+  const { data: rawStock = [] } = useStockUnits();
+  const { data: allMovements = [] } = useMovements(1000);
+  const { data: allocations = [] } = useAllocations();
+  const { data: platformList = [] } = usePlatforms();
+  const { platformId, isAll: allPlatforms } = usePlatformFilter();
+  const platformName = allPlatforms
+    ? "Estoque geral"
+    : (platformList.find((p) => p.id === platformId)?.name ?? "Plataforma");
+
+  /** Todo o painel respeita o recorte de plataforma (estoque e movimentações). */
+  const stock = useMemo(
+    () => viewStock(rawStock, allocations, platformId),
+    [rawStock, allocations, platformId],
+  );
+  const movements = useMemo(
+    () => (allPlatforms ? allMovements : allMovements.filter((m) => m.platform_id === platformId)),
+    [allMovements, allPlatforms, platformId],
+  );
 
   const { state, setState, range } = useFilters("30d");
   const scopeIds = useMemo(() => skuIdsInScope(state.scope, skus), [state.scope, skus]);
@@ -640,11 +658,11 @@ function Dashboard() {
         }));
       await downloadPdf(
         `painel-${new Date().toISOString().slice(0, 10)}`,
-        "Painel de estoque e vendas",
+        `Painel de estoque e vendas — ${platformName}`,
         [
           {
             kind: "kpis",
-            title: `Período ${periodo}`,
+            title: `Período ${periodo} · ${platformName}`,
             items: [
               { label: "Unidades em estoque", value: String(totalUnits) },
               { label: "Saídas no período", value: String(totalOut) },
@@ -724,6 +742,15 @@ function Dashboard() {
           Todos os números vêm das movimentações reais registradas no sistema.
         </p>
       </header>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <PlatformFilter />
+        {!allPlatforms && (
+          <span className="text-xs text-muted-foreground">
+            Painel restrito ao estoque reservado e às movimentações de {platformName}.
+          </span>
+        )}
+      </div>
 
       <FilterBar state={state} setState={setState} categories={categories} skus={skus} />
 

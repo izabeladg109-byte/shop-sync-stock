@@ -26,7 +26,20 @@ import {
   type ColorSizePlan,
 } from "@/lib/analytics";
 
+import {
+  ALL_PLATFORMS,
+  allocationOf,
+  freeOf,
+  reservedOf,
+  useAllocations,
+  usePlatformFilter,
+  usePlatforms,
+  useSetAllocation,
+  viewStock,
+} from "@/lib/platforms";
+
 import { ColorDot, KitSwatches } from "@/components/kit-swatches";
+import { PlatformFilter } from "@/components/platform-filter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -198,10 +211,21 @@ function EstoquePage() {
   const { data: kitColors = [] } = useKitColors();
   const { data: stock = [] } = useStockUnits();
   const { data: movements = [] } = useMovements(500);
+  const { data: allocations = [] } = useAllocations();
+  const { data: platforms = [] } = usePlatforms();
+  const { platformId, isAll } = usePlatformFilter();
   const setStock = useSetUnitStock();
+  const setAllocation = useSetAllocation();
+  const platformName = platforms.find((p) => p.id === platformId)?.name ?? "";
   const setLock = useSetSkuLock();
   const { prefs, save: savePrefs } = useUserPrefs();
   const isMobile = useIsMobile();
+
+  /** Kits e distribuição respeitam o recorte de plataforma selecionado. */
+  const stockView = useMemo(
+    () => viewStock(stock, allocations, platformId),
+    [stock, allocations, platformId],
+  );
 
   const [view, setView] = useState<View>("unidades");
   const [kitView, setKitView] = useState<KitView | null>(null);
@@ -284,7 +308,7 @@ function EstoquePage() {
           kits: skuKits,
           kitColors,
           colors: skuColors,
-          stock,
+          stock: stockView,
           weights,
           mode: distMode,
           unitDemand: demand.unit,
@@ -314,7 +338,7 @@ function EstoquePage() {
     sizes,
     colors,
     kitColors,
-    stock,
+    stockView,
     weights,
     distMode,
     mixBySku,
@@ -348,7 +372,13 @@ function EstoquePage() {
               <TabsTrigger value="kits">Kits</TabsTrigger>
             </TabsList>
           </Tabs>
+          <PlatformFilter />
         </div>
+        <p className="text-xs text-muted-foreground">
+          {isAll
+            ? "Estoque geral: quantidade física total. Abaixo de cada célula aparece quanto já está reservado para plataformas."
+            : `Mostrando a reserva de ${platformName}. Editar aqui apenas move parte do estoque geral para esta plataforma — nada é criado nem duplicado.`}
+        </p>
       </header>
 
       {view === "kits" && (
@@ -506,7 +536,16 @@ function EstoquePage() {
                                   </span>
                                 </td>
                                 {skuSizes.map((size) => {
-                                  const current = stockOf(stock, color.id, size.id);
+                                  const total = stockOf(stock, color.id, size.id);
+                                  const reserved = reservedOf(allocations, color.id, size.id);
+                                  const free = freeOf(stock, allocations, color.id, size.id);
+                                  const alloc = allocationOf(
+                                    allocations,
+                                    platformId,
+                                    color.id,
+                                    size.id,
+                                  );
+                                  const current = isAll ? total : alloc;
                                   return (
                                   <td key={size.id} className="px-1 py-1.5 sm:px-2">
                                     <QtyCell
@@ -514,17 +553,31 @@ function EstoquePage() {
                                       locked={sku.locked}
                                       compact={isMobile}
                                       onChange={(next) =>
-                                        setStock.mutate({
-                                          sku_id: sku.id,
-                                          color_id: color.id,
-                                          size_id: size.id,
-                                          qty: next,
-                                          previous: current,
-                                          note: `Alteração direta no estoque (${color.name} · ${size.name})`,
-                                        })
+                                        isAll
+                                          ? setStock.mutate({
+                                              sku_id: sku.id,
+                                              color_id: color.id,
+                                              size_id: size.id,
+                                              qty: next,
+                                              previous: current,
+                                              note: `Alteração direta no estoque (${color.name} · ${size.name})`,
+                                            })
+                                          : setAllocation.mutate({
+                                              platform_id: platformId,
+                                              sku_id: sku.id,
+                                              color_id: color.id,
+                                              size_id: size.id,
+                                              qty: next,
+                                            })
                                       }
                                     />
-
+                                    <span className="mt-0.5 block text-center text-[10px] leading-tight text-muted-foreground">
+                                      {isAll
+                                        ? reserved > 0
+                                          ? `livre ${free} · reservado ${reserved}`
+                                          : "sem reserva"
+                                        : `de ${total} · livre ${free}`}
+                                    </span>
                                   </td>
                                   );
                                 })}
@@ -557,7 +610,7 @@ function EstoquePage() {
                                       kit.id,
                                       size.id,
                                       kitColors,
-                                      stock,
+                                      stockView,
                                     );
                                     const value =
                                       activeKitView === "possiveis"
@@ -605,7 +658,7 @@ function EstoquePage() {
                                     </span>
                                   </td>
                                   {skuSizes.map((size) => {
-                                    const total = stockOf(stock, color.id, size.id);
+                                    const total = stockOf(stockView, color.id, size.id);
                                     const livre = unitsFree[color.id]?.[size.id] ?? total;
                                     const plan = plans[`${color.id}|${size.id}`];
                                     return (

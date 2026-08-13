@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Database, Download, HardDrive, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { PlatformManager } from "@/components/platform-manager";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -558,6 +559,8 @@ function ConfiguracoesPage() {
           Armazenamento, exportação de dados e limpeza com filtros.
         </p>
       </header>
+
+      <PlatformManager />
 
       {/* Armazenamento */}
       <section className="card-elevated space-y-4 p-4">

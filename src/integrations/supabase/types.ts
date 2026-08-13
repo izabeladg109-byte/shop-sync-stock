@@ -338,6 +338,7 @@ export type Database = {
           lines: Json
           note: string | null
           order_ref: string | null
+          platform_id: string | null
           qty: number
           size_id: string | null
           sku_id: string | null
@@ -360,6 +361,7 @@ export type Database = {
           lines?: Json
           note?: string | null
           order_ref?: string | null
+          platform_id?: string | null
           qty: number
           size_id?: string | null
           sku_id?: string | null
@@ -382,6 +384,7 @@ export type Database = {
           lines?: Json
           note?: string | null
           order_ref?: string | null
+          platform_id?: string | null
           qty?: number
           size_id?: string | null
           sku_id?: string | null
@@ -393,6 +396,13 @@ export type Database = {
           user_name?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "movements_platform_id_fkey"
+            columns: ["platform_id"]
+            isOneToOne: false
+            referencedRelation: "platforms"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "movements_sku_id_fkey"
             columns: ["sku_id"]
@@ -442,6 +452,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      platforms: {
+        Row: {
+          active: boolean
+          color: string
+          created_at: string
+          deleted_at: string | null
+          id: string
+          name: string
+          position: number
+          slug: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          color?: string
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          name: string
+          position?: number
+          slug: string
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          active?: boolean
+          color?: string
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          name?: string
+          position?: number
+          slug?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       profiles: {
         Row: {
@@ -561,6 +610,78 @@ export type Database = {
           },
         ]
       }
+      stock_allocations: {
+        Row: {
+          color_id: string
+          created_at: string
+          id: string
+          platform_id: string
+          qty: number
+          size_id: string
+          sku_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          color_id: string
+          created_at?: string
+          id?: string
+          platform_id: string
+          qty?: number
+          size_id: string
+          sku_id: string
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          color_id?: string
+          created_at?: string
+          id?: string
+          platform_id?: string
+          qty?: number
+          size_id?: string
+          sku_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_allocations_color_id_fkey"
+            columns: ["color_id"]
+            isOneToOne: false
+            referencedRelation: "colors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_allocations_platform_id_fkey"
+            columns: ["platform_id"]
+            isOneToOne: false
+            referencedRelation: "platforms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_allocations_size_id_fkey"
+            columns: ["size_id"]
+            isOneToOne: false
+            referencedRelation: "kits_available"
+            referencedColumns: ["size_id"]
+          },
+          {
+            foreignKeyName: "stock_allocations_size_id_fkey"
+            columns: ["size_id"]
+            isOneToOne: false
+            referencedRelation: "sizes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_allocations_sku_id_fkey"
+            columns: ["sku_id"]
+            isOneToOne: false
+            referencedRelation: "skus"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stock_edits: {
         Row: {
           color_id: string | null
@@ -569,6 +690,7 @@ export type Database = {
           id: string
           kind: string
           note: string | null
+          platform_id: string | null
           qty_after: number
           qty_before: number
           size_id: string | null
@@ -583,6 +705,7 @@ export type Database = {
           id?: string
           kind?: string
           note?: string | null
+          platform_id?: string | null
           qty_after?: number
           qty_before?: number
           size_id?: string | null
@@ -597,6 +720,7 @@ export type Database = {
           id?: string
           kind?: string
           note?: string | null
+          platform_id?: string | null
           qty_after?: number
           qty_before?: number
           size_id?: string | null
@@ -610,6 +734,13 @@ export type Database = {
             columns: ["color_id"]
             isOneToOne: false
             referencedRelation: "colors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_edits_platform_id_fkey"
+            columns: ["platform_id"]
+            isOneToOne: false
+            referencedRelation: "platforms"
             referencedColumns: ["id"]
           },
           {
@@ -776,6 +907,7 @@ export type Database = {
           p_kind: Database["public"]["Enums"]["mov_kind"]
           p_note?: string
           p_order_ref?: string
+          p_platform_id?: string
           p_qty: number
           p_ref_id: string
           p_size_id: string
@@ -808,6 +940,16 @@ export type Database = {
       purge_period_data: {
         Args: { p_confirm: string; p_from: string; p_to: string }
         Returns: Json
+      }
+      set_allocation: {
+        Args: {
+          p_color_id: string
+          p_platform_id: string
+          p_qty: number
+          p_size_id: string
+          p_sku_id: string
+        }
+        Returns: undefined
       }
       set_sku_lock: {
         Args: { p_locked: boolean; p_sku_id: string }

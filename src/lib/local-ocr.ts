@@ -8,23 +8,38 @@
 
 type Worker = {
   recognize: (image: unknown) => Promise<{ data: { text: string; confidence: number } }>;
+  setParameters: (p: Record<string, string>) => Promise<unknown>;
   terminate: () => Promise<unknown>;
 };
 
 let workerPromise: Promise<Worker> | null = null;
 
-/** Cria (uma única vez) o worker de OCR. Só funciona no navegador. */
+/**
+ * Cria (uma única vez) o worker de OCR. Só funciona no navegador.
+ * Tenta português; se o pacote de idioma não carregar (rede/offline),
+ * cai para inglês — o alfabeto é o mesmo e a leitura continua funcionando.
+ */
 export async function getOcrWorker(): Promise<Worker> {
   if (typeof window === "undefined") throw new Error("OCR local só roda no navegador");
   if (!workerPromise) {
     workerPromise = (async () => {
       const { createWorker } = await import("tesseract.js");
-      const worker = await createWorker("por", 1, { legacyCore: false, legacyLang: false });
-      await worker.setParameters({
-        tessedit_pageseg_mode: "6" as never,
+      let worker: unknown;
+      try {
+        worker = await createWorker("por", 1, { legacyCore: false, legacyLang: false });
+      } catch {
+        worker = await createWorker("eng", 1, { legacyCore: false, legacyLang: false });
+      }
+      const w = worker as Worker;
+      await w.setParameters({
+        // 4 = coluna única de textos com tamanhos variados: é o caso das
+        // etiquetas/packing lists. O modo 6 antigo tratava a etiqueta como um
+        // bloco uniforme e perdia as linhas da tabela de itens.
+        tessedit_pageseg_mode: "4",
         preserve_interword_spaces: "1",
+        user_defined_dpi: "300",
       });
-      return worker as unknown as Worker;
+      return w;
     })().catch((e) => {
       workerPromise = null;
       throw e;
@@ -51,6 +66,54 @@ export async function recognizeCanvas(canvas: HTMLCanvasElement): Promise<LocalO
   const worker = await getOcrWorker();
   const { data } = await worker.recognize(canvas);
   return { text: data.text ?? "", confidence: (data.confidence ?? 0) / 100 };
+}
+
+/**
+ * Binarização adaptativa (Sauvola simplificado por blocos).
+ * Etiqueta térmica costuma ter iluminação irregular; limiar global apaga
+ * metade do texto. Isto é o que mais melhora a taxa de acerto do Tesseract.
+ */
+export function binarize(ctx: CanvasRenderingContext2D, w: number, h: number, boost = false) {
+  const img = ctx.getImageData(0, 0, w, h);
+  const d = img.data;
+  const gray = new Float32Array(w * h);
+  for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+    gray[p] = 0.299 * (d[i] ?? 0) + 0.587 * (d[i + 1] ?? 0) + 0.114 * (d[i + 2] ?? 0);
+  }
+  const block = Math.max(16, Math.round(Math.min(w, h) / 12));
+  const cols = Math.ceil(w / block);
+  const rows = Math.ceil(h / block);
+  const means = new Float32Array(cols * rows);
+  for (let by = 0; by < rows; by++) {
+    for (let bx = 0; bx < cols; bx++) {
+      let sum = 0;
+      let n = 0;
+      const y1 = Math.min(h, (by + 1) * block);
+      const x1 = Math.min(w, (bx + 1) * block);
+      for (let y = by * block; y < y1; y += 2) {
+        for (let x = bx * block; x < x1; x += 2) {
+          sum += gray[y * w + x] ?? 0;
+          n++;
+        }
+      }
+      means[by * cols + bx] = n ? sum / n : 128;
+    }
+  }
+  const offset = boost ? 4 : 10;
+  for (let y = 0; y < h; y++) {
+    const by = Math.min(rows - 1, Math.floor(y / block));
+    for (let x = 0; x < w; x++) {
+      const bx = Math.min(cols - 1, Math.floor(x / block));
+      const t = (means[by * cols + bx] ?? 128) - offset;
+      const v = (gray[y * w + x] ?? 0) < t ? 0 : 255;
+      const i = (y * w + x) * 4;
+      d[i] = v;
+      d[i + 1] = v;
+      d[i + 2] = v;
+      d[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
 }
 
 /**

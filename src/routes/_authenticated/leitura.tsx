@@ -16,6 +16,7 @@ import { resolveLine, type Resolved } from "@/lib/kit-match";
 import { parsePackingLabel } from "@/lib/ocr.functions";
 import { parseLabelText } from "@/lib/label-parse";
 import {
+  binarize,
   disposeOcrWorker,
   frameDifference,
   frameFingerprint,
@@ -24,6 +25,7 @@ import {
   signatureDistance,
   textSignature,
 } from "@/lib/local-ocr";
+
 
 import { ColorDot, KitSwatches } from "@/components/kit-swatches";
 import { Button } from "@/components/ui/button";
@@ -62,7 +64,7 @@ export const Route = createFileRoute("/_authenticated/leitura")({
 type Pending = Resolved;
 
 
-const FOCUS_THRESHOLD = 28;
+const FOCUS_THRESHOLD = 9;
 
 function beep() {
   try {
@@ -151,6 +153,11 @@ function LeituraPage() {
   const prevFrameRef = useRef<Uint8ClampedArray | null>(null);
   const doneFrameRef = useRef<Uint8ClampedArray | null>(null);
   const lastSigRef = useRef("");
+  /** quantas vezes seguidas o quadro foi descartado (tremida/foco) */
+  const skipRef = useRef(0);
+  /** melhor nitidez já vista: serve de referência adaptativa por ambiente */
+  const bestSharpRef = useRef(0);
+
 
   const [active, setActive] = useState(false);
   const [status, setStatus] = useState("Câmera desligada");
@@ -266,7 +273,7 @@ function LeituraPage() {
     busyRef.current = true;
     try {
       // resolução dinâmica: menor no celular, o suficiente para o OCR
-      const targetWidth = Math.min(video.videoWidth, window.innerWidth < 640 ? 900 : 1100);
+      const targetWidth = Math.min(video.videoWidth, window.innerWidth < 640 ? 1000 : 1280);
       const scale = targetWidth / video.videoWidth;
       const canvas = canvasRef.current ?? document.createElement("canvas");
       canvasRef.current = canvas;
@@ -274,46 +281,55 @@ function LeituraPage() {
       canvas.height = Math.round(video.videoHeight * scale);
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
       if (!ctx) return;
-      ctx.filter = sharpModeRef.current
-        ? "grayscale(1) contrast(2.2) brightness(1.12)"
-        : "grayscale(1) contrast(1.35)";
+      ctx.filter = "grayscale(1) contrast(1.2)";
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       ctx.filter = "none";
 
-      // 1) estabilidade: só lê quando a imagem parou de se mexer
+      // 1) estabilidade: só lê quando a imagem parou de se mexer.
+      //    O limite é generoso porque a câmera é sempre na mão; e depois de
+      //    algumas tentativas seguidas a leitura acontece de qualquer jeito
+      //    (antes, o scanner podia nunca chegar a rodar o OCR).
       const fp = frameFingerprint(ctx, canvas.width, canvas.height);
       const movement = prevFrameRef.current ? frameDifference(prevFrameRef.current, fp) : 255;
       prevFrameRef.current = fp;
-      if (movement > 9) {
+      const forced = skipRef.current >= 3;
+      if (movement > 26 && !forced) {
+        skipRef.current++;
         setStatus("Segure firme para estabilizar a leitura…");
         return;
       }
 
       // 2) mesma etiqueta parada na frente da câmera: não reprocessa
-      if (doneFrameRef.current && frameDifference(doneFrameRef.current, fp) < 4) {
+      if (doneFrameRef.current && frameDifference(doneFrameRef.current, fp) < 3) {
         setStatus("Etiqueta já lida — aproxime a próxima");
         return;
       }
 
-      // 3) foco
+      // 3) foco (apenas informativo: nunca bloqueia a leitura por completo)
       const sharp = sharpness(ctx, canvas.width, canvas.height);
-      if (sharp < FOCUS_THRESHOLD) {
-        setFocused(false);
+      bestSharpRef.current = Math.max(bestSharpRef.current * 0.97, sharp);
+      const focusOk = sharp >= Math.max(FOCUS_THRESHOLD, bestSharpRef.current * 0.4);
+      setFocused(focusOk);
+      if (!focusOk && !forced) {
+        skipRef.current++;
         setStatus("Aproxime ou aguarde o foco.");
         return;
       }
-      setFocused(true);
+      skipRef.current = 0;
       setStatus("Lendo etiqueta…");
 
-      // 4) OCR local — não consome crédito de IA
+      // 4) OCR local — não consome crédito de IA.
+      //    Binarização adaptativa antes do OCR: é o que faz a etiqueta
+      //    térmica ser realmente reconhecida sob luz irregular.
+      binarize(ctx, canvas.width, canvas.height, sharpModeRef.current);
       const { text, confidence } = await recognizeCanvas(canvas);
-      doneFrameRef.current = fp;
       const sig = textSignature(text);
-      if (sig.length < 12) {
+      if (sig.length < 10) {
         setStatus("Nada legível ainda — aproxime a etiqueta");
         return;
       }
-      if (signatureDistance(sig, lastSigRef.current) < 0.12) {
+      if (signatureDistance(sig, lastSigRef.current) < 0.1) {
+        doneFrameRef.current = fp;
         setStatus("Mesma etiqueta — aproxime a próxima");
         return;
       }
@@ -321,6 +337,7 @@ function LeituraPage() {
       const items = parseLabelText(text, listsRef.current, Math.max(0.5, confidence));
       if (items.length > 0) {
         lastSigRef.current = sig;
+        doneFrameRef.current = fp;
         handOff(items);
         return;
       }
@@ -333,6 +350,7 @@ function LeituraPage() {
           const result = await parse({ data: { image, ...listsRef.current } });
           if (result.items.length > 0) {
             lastSigRef.current = sig;
+            doneFrameRef.current = fp;
             handOff(result.items);
             return;
           }
@@ -347,6 +365,7 @@ function LeituraPage() {
       busyRef.current = false;
     }
   }, [handOff, parse]);
+
 
   // o loop usa uma ref para não reiniciar o intervalo a cada re-render
   const scanRef = useRef(scan);
