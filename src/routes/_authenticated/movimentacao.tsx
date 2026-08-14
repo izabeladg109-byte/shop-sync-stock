@@ -311,9 +311,9 @@ function MovimentacaoPage() {
             <p className="text-xs text-muted-foreground">
               {movementPlatform
                 ? direction === "in"
-                  ? "A entrada soma no estoque geral e já reserva a mesma quantidade para esta plataforma."
-                  : "A saída abate o estoque geral e a reserva desta plataforma (bloqueia se não houver reserva suficiente)."
-                : "Sem plataforma: movimenta apenas o estoque geral, sem mexer em reservas."}
+                  ? "A entrada pertence exclusivamente a esta plataforma e também compõe o total físico."
+                  : "A saída usa somente o saldo exclusivo desta plataforma."
+                : "Sem plataforma: movimenta somente o saldo geral não atribuído."}
             </p>
           </div>
         )}

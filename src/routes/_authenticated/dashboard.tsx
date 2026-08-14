@@ -184,7 +184,7 @@ function Dashboard() {
   const { data: platformList = [] } = usePlatforms();
   const { platformId, isAll: allPlatforms } = usePlatformFilter();
   const platformName = allPlatforms
-    ? "Estoque geral"
+    ? "Saldo geral não atribuído"
     : (platformList.find((p) => p.id === platformId)?.name ?? "Plataforma");
 
   /** Todo o painel respeita o recorte de plataforma (estoque e movimentações). */
@@ -747,7 +747,7 @@ function Dashboard() {
         <PlatformFilter />
         {!allPlatforms && (
           <span className="text-xs text-muted-foreground">
-            Painel restrito ao estoque reservado e às movimentações de {platformName}.
+            Painel restrito ao saldo exclusivo e às movimentações de {platformName}.
           </span>
         )}
       </div>

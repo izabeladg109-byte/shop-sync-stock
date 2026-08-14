@@ -362,7 +362,7 @@ function SugestoesPage() {
   const { data: allocations = [] } = useAllocations();
   const { platformId, isAll: allPlatforms } = usePlatformFilter();
 
-  /** Com plataforma selecionada, as sugestões olham só a parcela reservada. */
+  /** As sugestões sempre respeitam o saldo isolado do escopo selecionado. */
   const stock = useMemo(
     () => viewStock(rawStock, allocations, platformId),
     [rawStock, allocations, platformId],
@@ -606,7 +606,7 @@ function SugestoesPage() {
         <PlatformFilter />
         {!allPlatforms && (
           <span className="text-xs text-muted-foreground">
-            Sugestões calculadas apenas sobre o estoque reservado e as vendas desta plataforma.
+            Sugestões calculadas apenas sobre o saldo exclusivo e as vendas desta plataforma.
           </span>
         )}
       </div>

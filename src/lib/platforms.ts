@@ -161,7 +161,7 @@ export function usePlatformCrud() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  /** Exclusão específica: apaga a plataforma e apenas as reservas dela. */
+  /** Exclusão específica: apaga a plataforma e apenas os saldos dela. */
   const hardDelete = useMutation({
     mutationFn: async (id: string) => {
       const { error: eAlloc } = await supabase
@@ -173,7 +173,7 @@ export function usePlatformCrud() {
       if (error) throw new Error(error.message);
       await logAudit("exclusao_definitiva", "platforms", id);
     },
-    onSuccess: () => done("Plataforma excluída — estoque geral preservado"),
+    onSuccess: () => done("Plataforma excluída — estoque físico preservado"),
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -224,7 +224,7 @@ export function allocationOf(
   );
 }
 
-/** Total reservado (todas as plataformas) para uma cor/tamanho. */
+/** Total atribuído a todas as plataformas para uma cor/tamanho. */
 export function reservedOf(allocations: StockAllocation[], colorId: string, sizeId: string) {
   return allocations
     .filter((a) => a.color_id === colorId && a.size_id === sizeId)

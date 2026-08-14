@@ -376,8 +376,8 @@ function EstoquePage() {
         </div>
         <p className="text-xs text-muted-foreground">
           {isAll
-            ? "Estoque geral: quantidade física total. Abaixo de cada célula aparece quanto já está reservado para plataformas."
-            : `Mostrando a reserva de ${platformName}. Editar aqui apenas move parte do estoque geral para esta plataforma — nada é criado nem duplicado.`}
+            ? "Saldo geral: unidades físicas ainda não atribuídas a nenhuma plataforma."
+            : `Mostrando apenas o saldo exclusivo de ${platformName}. Outras plataformas não podem ver nem consumir estas unidades.`}
         </p>
       </header>
 
