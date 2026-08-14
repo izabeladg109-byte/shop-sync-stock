@@ -15,6 +15,7 @@ import {
 import { resolveLine, type Resolved } from "@/lib/kit-match";
 import { parsePackingLabel } from "@/lib/ocr.functions";
 import { parseLabelText } from "@/lib/label-parse";
+import { ALL_PLATFORMS, usePlatformFilter } from "@/lib/platforms";
 import {
   binarize,
   disposeOcrWorker,
@@ -131,7 +132,7 @@ function sharpness(ctx: CanvasRenderingContext2D, w: number, h: number): number 
 }
 
 function pct(v: number) {
-  return Math.min(99, Math.max(1, Math.round(v * 100)));
+  return Math.min(99, Math.max(0, Math.round(v * 100)));
 }
 
 function LeituraPage() {
@@ -143,6 +144,7 @@ function LeituraPage() {
   const applyMovement = useApplyMovement();
   const undo = useUndoMovement();
   const parse = useServerFn(parsePackingLabel);
+  const { platformId } = usePlatformFilter();
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -433,6 +435,7 @@ function LeituraPage() {
         affect_formed: false,
         source: "packing_list",
         note: `Leitura: ${pending.raw}`,
+        platform_id: platformId === ALL_PLATFORMS ? null : platformId,
       });
       const sizeName = sizes.find((s) => s.id === pending.sizeId)?.name ?? "";
       const refName =
@@ -469,7 +472,7 @@ function LeituraPage() {
         <div className="mb-1 flex items-center justify-between gap-2">
           <span className="text-xs text-muted-foreground">{label}</span>
           <span className={weak ? "text-xs font-semibold text-destructive" : "text-xs text-muted-foreground"}>
-            {pct(confidence)}%
+            {confidence <= 0 ? "Não identificado" : `${pct(confidence)}%`}
           </span>
         </div>
         {node}
