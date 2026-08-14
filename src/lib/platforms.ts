@@ -34,7 +34,11 @@ export type StockAllocation = {
 /** Valor especial do filtro: saldo geral não atribuído. */
 export const ALL_PLATFORMS = "all";
 
-const CATALOG = { staleTime: 5 * 60_000, gcTime: 30 * 60_000, refetchOnWindowFocus: false } as const;
+const CATALOG = {
+  staleTime: 5 * 60_000,
+  gcTime: 30 * 60_000,
+  refetchOnWindowFocus: false,
+} as const;
 const LIVE = { staleTime: 30_000, gcTime: 10 * 60_000, refetchOnWindowFocus: false } as const;
 
 export function usePlatforms(trash = false) {

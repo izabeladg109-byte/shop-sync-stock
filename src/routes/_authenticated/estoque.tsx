@@ -18,13 +18,7 @@ import {
   type DistMode,
   type KitView,
 } from "@/lib/erp";
-import {
-  demandMaps,
-  kitDemand,
-  planSize,
-  salesMix,
-  type ColorSizePlan,
-} from "@/lib/analytics";
+import { demandMaps, kitDemand, planSize, salesMix, type ColorSizePlan } from "@/lib/analytics";
 
 import {
   ALL_PLATFORMS,
@@ -83,7 +77,6 @@ const DIST_MODE_HINT: Record<DistMode, string> = {
     "Decide cor por cor e tamanho por tamanho conforme o histórico real de saídas, e explica cada escolha.",
 };
 
-
 /**
  * Célula de quantidade: salva sozinha logo após a digitação (sem esperar sair
  * da tela) e imediatamente nos botões + / − do desktop.
@@ -116,9 +109,12 @@ function QtyCell({
     if (!dirty.current) setDraft(String(qty));
   }, [qty]);
 
-  useEffect(() => () => {
-    if (timer.current) clearTimeout(timer.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
 
   const commit = (raw: string) => {
     if (timer.current) {
@@ -201,7 +197,6 @@ function QtyCell({
   );
 }
 
-
 function EstoquePage() {
   const { data: categories = [] } = useCategories();
   const { data: skus = [] } = useSkus();
@@ -250,10 +245,7 @@ function EstoquePage() {
   };
 
   /** Pesos de demanda por kit e reserva para venda unitária (histórico real). */
-  const weights = useMemo(
-    () => kitDemand(movements.filter((m) => !m.undone_at)),
-    [movements],
-  );
+  const weights = useMemo(() => kitDemand(movements.filter((m) => !m.undone_at)), [movements]);
   const mixBySku = useMemo(() => {
     const map: Record<string, number> = {};
     for (const sku of skus) {
@@ -348,8 +340,6 @@ function EstoquePage() {
 
   const skuReasons = (skuId: string) => (reasonsBySku[skuId] ?? []).slice(0, 6);
 
-
-
   return (
     <div className="space-y-5">
       <header className="space-y-3">
@@ -427,7 +417,6 @@ function EstoquePage() {
             </div>
           )}
 
-
           <p className="text-xs text-muted-foreground">
             {activeKitView === "possiveis"
               ? "Quantos kits podem ser montados com as unidades atuais (menor estoque entre as cores)."
@@ -500,7 +489,11 @@ function EstoquePage() {
                           : "border-border text-muted-foreground hover:bg-muted"
                       }`}
                     >
-                      {sku.locked ? <Lock className="size-3.5" /> : <LockOpen className="size-3.5" />}
+                      {sku.locked ? (
+                        <Lock className="size-3.5" />
+                      ) : (
+                        <LockOpen className="size-3.5" />
+                      )}
                       <span className="hidden sm:inline">
                         {sku.locked ? "Travado" : "Destravado"}
                       </span>
@@ -545,43 +538,42 @@ function EstoquePage() {
                                     color.id,
                                     size.id,
                                   );
-                                   const current = isAll ? free : alloc;
+                                  const current = isAll ? free : alloc;
                                   return (
-                                  <td key={size.id} className="px-1 py-1.5 sm:px-2">
-                                    <QtyCell
-                                      qty={current}
-                                      locked={sku.locked}
-                                      compact={isMobile}
-                                      onChange={(next) =>
-                                        isAll
-                                          ? setStock.mutate({
-                                              sku_id: sku.id,
-                                              color_id: color.id,
-                                              size_id: size.id,
-                                               qty: reserved + next,
-                                               previous: total,
-                                              note: `Alteração direta no estoque (${color.name} · ${size.name})`,
-                                            })
-                                          : setAllocation.mutate({
-                                              platform_id: platformId,
-                                              sku_id: sku.id,
-                                              color_id: color.id,
-                                              size_id: size.id,
-                                              qty: next,
-                                            })
-                                      }
-                                    />
-                                    <span className="mt-0.5 block text-center text-[10px] leading-tight text-muted-foreground">
-                                       {isAll
-                                         ? reserved > 0
-                                           ? `geral ${free} · plataformas ${reserved}`
-                                           : "saldo geral"
-                                         : `exclusivo · físico total ${total}`}
-                                    </span>
-                                  </td>
+                                    <td key={size.id} className="px-1 py-1.5 sm:px-2">
+                                      <QtyCell
+                                        qty={current}
+                                        locked={sku.locked}
+                                        compact={isMobile}
+                                        onChange={(next) =>
+                                          isAll
+                                            ? setStock.mutate({
+                                                sku_id: sku.id,
+                                                color_id: color.id,
+                                                size_id: size.id,
+                                                qty: reserved + next,
+                                                previous: total,
+                                                note: `Alteração direta no estoque (${color.name} · ${size.name})`,
+                                              })
+                                            : setAllocation.mutate({
+                                                platform_id: platformId,
+                                                sku_id: sku.id,
+                                                color_id: color.id,
+                                                size_id: size.id,
+                                                qty: next,
+                                              })
+                                        }
+                                      />
+                                      <span className="mt-0.5 block text-center text-[10px] leading-tight text-muted-foreground">
+                                        {isAll
+                                          ? reserved > 0
+                                            ? `geral ${free} · plataformas ${reserved}`
+                                            : "saldo geral"
+                                          : `exclusivo · físico total ${total}`}
+                                      </span>
+                                    </td>
                                   );
                                 })}
-
                               </tr>
                             ))
                           : skuKits.map((kit) => {
@@ -617,10 +609,7 @@ function EstoquePage() {
                                         ? possible
                                         : (distribution[kit.id]?.[size.id] ?? 0);
                                     return (
-                                      <td
-                                        key={size.id}
-                                        className="px-1 py-2 text-center sm:px-3"
-                                      >
+                                      <td key={size.id} className="px-1 py-2 text-center sm:px-3">
                                         <span className="block text-sm font-semibold">{value}</span>
                                         <span className="block text-[11px] text-muted-foreground">
                                           {activeKitView === "possiveis"
@@ -696,9 +685,7 @@ function EstoquePage() {
                               )}
                             </>
                           )}
-
                       </tbody>
-
                     </table>
                   </div>
                 )}
@@ -716,9 +703,7 @@ function EstoquePage() {
             className="flex w-full items-center gap-2 text-left text-sm font-medium"
           >
             <Eye className="size-4 shrink-0 text-muted-foreground" />
-            <span className="min-w-0 flex-1 truncate">
-              SKUs ocultos ({hiddenSkus.length})
-            </span>
+            <span className="min-w-0 flex-1 truncate">SKUs ocultos ({hiddenSkus.length})</span>
             <ChevronDown
               className={`size-4 shrink-0 transition-transform ${showHidden ? "" : "-rotate-90"}`}
             />

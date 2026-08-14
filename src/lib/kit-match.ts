@@ -88,9 +88,7 @@ export function resolveLine(line: OcrLine, cat: Catalog): Resolved | null {
     }
   }
   const matchedIds = matched.map((m) => m.color.id);
-  const colorScore = matched.length
-    ? matched.reduce((a, m) => a + m.score, 0) / matched.length
-    : 0;
+  const colorScore = matched.length ? matched.reduce((a, m) => a + m.score, 0) / matched.length : 0;
 
   const base = {
     skuId,
@@ -139,23 +137,47 @@ export function resolveLine(line: OcrLine, cat: Catalog): Resolved | null {
       return make("kit", exact[0]!.kit.id, colorScore, "Composição idêntica ao kit cadastrado");
     }
     if (exact.length > 1) {
-      return make("kit", "", colorScore * 0.5, "Mais de um kit com a mesma composição", true,
-        exact.map((c) => c.kit.id));
+      return make(
+        "kit",
+        "",
+        colorScore * 0.5,
+        "Mais de um kit com a mesma composição",
+        true,
+        exact.map((c) => c.kit.id),
+      );
     }
 
     // nenhum kit exato: kits que contêm todas as cores lidas
     const supersets = compositions.filter((c) => matchedIds.every((id) => c.ids.includes(id)));
     if (supersets.length === 1) {
-      return make("kit", "", colorScore * 0.6,
-        "A etiqueta não trouxe a composição completa do kit", true, supersets.map((c) => c.kit.id));
+      return make(
+        "kit",
+        "",
+        colorScore * 0.6,
+        "A etiqueta não trouxe a composição completa do kit",
+        true,
+        supersets.map((c) => c.kit.id),
+      );
     }
     if (supersets.length > 1) {
-      return make("kit", "", colorScore * 0.5,
-        "Várias composições possíveis para estas cores", true, supersets.map((c) => c.kit.id));
+      return make(
+        "kit",
+        "",
+        colorScore * 0.5,
+        "Várias composições possíveis para estas cores",
+        true,
+        supersets.map((c) => c.kit.id),
+      );
     }
     // cores lidas não formam nenhum kit cadastrado
-    return make("kit", "", colorScore * 0.4,
-      "Nenhum kit cadastrado com estas cores", true, compositions.map((c) => c.kit.id));
+    return make(
+      "kit",
+      "",
+      colorScore * 0.4,
+      "Nenhum kit cadastrado com estas cores",
+      true,
+      compositions.map((c) => c.kit.id),
+    );
   }
 
   // ---- Uma cor só: pode ser unidade ou kit citado pelo nome ------------
@@ -167,8 +189,14 @@ export function resolveLine(line: OcrLine, cat: Catalog): Resolved | null {
     const top = scored[0];
     const second = scored[1];
     if (top) {
-      return make("kit", "", Math.min(0.61, top.score), "Kit citado, mas sem composição real suficiente", true,
-        scored.filter((s) => s.score >= 0.5).map((s) => s.kit.id));
+      return make(
+        "kit",
+        "",
+        Math.min(0.61, top.score),
+        "Kit citado, mas sem composição real suficiente",
+        true,
+        scored.filter((s) => s.score >= 0.5).map((s) => s.kit.id),
+      );
     }
   }
 

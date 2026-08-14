@@ -512,7 +512,9 @@ function ConfiguracoesPage() {
       return data as unknown as { found: number; deleted: number };
     },
     onSuccess: (result) => {
-      toast.success(`${result.deleted} de ${result.found} registro(s) encontrado(s) foram excluídos.`);
+      toast.success(
+        `${result.deleted} de ${result.found} registro(s) encontrado(s) foram excluídos.`,
+      );
       setConfirmOpen(false);
       setConfirmText("");
       void qc.invalidateQueries();

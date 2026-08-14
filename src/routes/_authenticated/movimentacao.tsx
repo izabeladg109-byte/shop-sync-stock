@@ -157,7 +157,7 @@ function MovimentacaoPage() {
   const kitPossible = useMemo(() => {
     const map = new Map<string, number>();
     for (const k of skuKits) {
-        map.set(k.id, kitPossibleTotal(k.id, k.sku_id, sizes, kitColors, scopedStock));
+      map.set(k.id, kitPossibleTotal(k.id, k.sku_id, sizes, kitColors, scopedStock));
     }
     return map;
   }, [skuKits, sizes, kitColors, scopedStock]);

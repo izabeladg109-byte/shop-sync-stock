@@ -35,7 +35,6 @@ Regras de confiança: só use valores acima de 0.97 quando o texto estiver perfe
 Prefira os valores mais próximos das listas de opções conhecidas fornecidas pelo usuário, mas devolva o texto lido quando não houver correspondência clara. Se um campo não existir na etiqueta, devolva string vazia (ou array vazio) e confiança 0.
 Responda APENAS JSON no formato {"items":[{"sku":"","colors":[""],"size":"","qty":1,"confidence":{"sku":0.9,"colors":0.9,"size":0.9,"qty":0.9}}]}.`;
 
-
 type RawItem = {
   sku?: unknown;
   color?: unknown;
@@ -106,30 +105,32 @@ export const parsePackingLabel = createServerFn({ method: "POST" })
     let items: ParsedLine[] = [];
     try {
       const parsed = JSON.parse(raw) as { items?: RawItem[] };
-       items = (parsed.items ?? []).map((i) => {
-        const list = Array.isArray(i.colors)
-          ? i.colors.map((c) => String(c ?? "").trim()).filter(Boolean)
-          : String(i.color ?? "")
-              .split(/\s*(?:\+|\/|&|,|\be\b)\s*/i)
-              .map((c) => c.trim())
-              .filter(Boolean);
-        const c = i.confidence ?? {};
-         const sku = String(i.sku ?? "").trim();
-         const size = String(i.size ?? "").trim();
-         const safeColors = list.filter((value) => known(value, [...data.colors, ...data.kits]));
-         return {
-           sku: known(sku, data.skus) ? sku : "",
-           colors: safeColors,
-           size: known(size, data.sizes) ? size : "",
-          qty: Number(i.qty) > 0 ? Math.floor(Number(i.qty)) : 1,
-          confidence: {
-             sku: known(sku, data.skus) ? conf(c["sku"], 0) : 0,
-             colors: safeColors.length === list.length ? conf(c["colors"] ?? c["color"], 0) : 0,
-             size: known(size, data.sizes) ? conf(c["size"], 0) : 0,
-             qty: conf(c["qty"], 0),
-          },
-        };
-       }).filter((item) => item.sku && item.size && item.colors.length > 0);
+      items = (parsed.items ?? [])
+        .map((i) => {
+          const list = Array.isArray(i.colors)
+            ? i.colors.map((c) => String(c ?? "").trim()).filter(Boolean)
+            : String(i.color ?? "")
+                .split(/\s*(?:\+|\/|&|,|\be\b)\s*/i)
+                .map((c) => c.trim())
+                .filter(Boolean);
+          const c = i.confidence ?? {};
+          const sku = String(i.sku ?? "").trim();
+          const size = String(i.size ?? "").trim();
+          const safeColors = list.filter((value) => known(value, [...data.colors, ...data.kits]));
+          return {
+            sku: known(sku, data.skus) ? sku : "",
+            colors: safeColors,
+            size: known(size, data.sizes) ? size : "",
+            qty: Number(i.qty) > 0 ? Math.floor(Number(i.qty)) : 1,
+            confidence: {
+              sku: known(sku, data.skus) ? conf(c["sku"], 0) : 0,
+              colors: safeColors.length === list.length ? conf(c["colors"] ?? c["color"], 0) : 0,
+              size: known(size, data.sizes) ? conf(c["size"], 0) : 0,
+              qty: conf(c["qty"], 0),
+            },
+          };
+        })
+        .filter((item) => item.sku && item.size && item.colors.length > 0);
     } catch {
       items = [];
     }

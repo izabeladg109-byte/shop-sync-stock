@@ -75,7 +75,10 @@ function findQty(line: string): { qty: number; conf: number } {
  * "MARROM CLARO" não casa com "MARROM" por acidente e o OCR pode errar
  * uma ou duas letras sem perder a leitura.
  */
-export function fuzzyFind(line: string, option: string): { score: number; at: number; len: number } {
+export function fuzzyFind(
+  line: string,
+  option: string,
+): { score: number; at: number; len: number } {
   const target = norm(line);
   const opt = norm(option);
   if (!opt || !target) return { score: 0, at: -1, len: 0 };
@@ -156,7 +159,9 @@ function looseSize(line: string, sizes: string[]): { value: string; conf: number
   for (const s of sorted) {
     const o = norm(s);
     if (!o) continue;
-    if (new RegExp(`(^|[^A-Z0-9])${o.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Z0-9]|$)`).test(t)) {
+    if (
+      new RegExp(`(^|[^A-Z0-9])${o.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Z0-9]|$)`).test(t)
+    ) {
       return { value: s, conf: 0.9 };
     }
   }

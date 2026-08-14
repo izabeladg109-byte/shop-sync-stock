@@ -27,7 +27,6 @@ import {
   textSignature,
 } from "@/lib/local-ocr";
 
-
 import { ColorDot, KitSwatches } from "@/components/kit-swatches";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,7 +62,6 @@ export const Route = createFileRoute("/_authenticated/leitura")({
 });
 
 type Pending = Resolved;
-
 
 const FOCUS_THRESHOLD = 9;
 
@@ -159,7 +157,6 @@ function LeituraPage() {
   const skipRef = useRef(0);
   /** melhor nitidez já vista: serve de referência adaptativa por ambiente */
   const bestSharpRef = useRef(0);
-
 
   const [active, setActive] = useState(false);
   const [status, setStatus] = useState("Câmera desligada");
@@ -360,14 +357,13 @@ function LeituraPage() {
           /* fallback é opcional: segue com OCR local */
         }
       }
-       setStatus("Não foi possível identificar a etiqueta com segurança. Continuando a leitura…");
+      setStatus("Não foi possível identificar a etiqueta com segurança. Continuando a leitura…");
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "Falha na leitura");
     } finally {
       busyRef.current = false;
     }
   }, [handOff, parse]);
-
 
   // o loop usa uma ref para não reiniciar o intervalo a cada re-render
   const scanRef = useRef(scan);
@@ -420,7 +416,6 @@ function LeituraPage() {
     setStatus("Procurando etiqueta…");
   }
 
-
   async function confirm() {
     if (!pending) return;
     try {
@@ -471,7 +466,11 @@ function LeituraPage() {
       >
         <div className="mb-1 flex items-center justify-between gap-2">
           <span className="text-xs text-muted-foreground">{label}</span>
-          <span className={weak ? "text-xs font-semibold text-destructive" : "text-xs text-muted-foreground"}>
+          <span
+            className={
+              weak ? "text-xs font-semibold text-destructive" : "text-xs text-muted-foreground"
+            }
+          >
             {confidence <= 0 ? "Não identificado" : `${pct(confidence)}%`}
           </span>
         </div>
@@ -511,7 +510,6 @@ function LeituraPage() {
             {active ? "Parar câmera" : "Ligar câmera"}
           </Button>
         </div>
-
       </header>
 
       <section className="card-elevated overflow-hidden">
@@ -549,9 +547,7 @@ function LeituraPage() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="min-w-0 font-display text-lg font-semibold">Confirmar baixa</h2>
             <div className="flex shrink-0 items-center gap-2">
-              {queue.length > 0 && (
-                <Badge variant="default">+{queue.length} nesta etiqueta</Badge>
-              )}
+              {queue.length > 0 && <Badge variant="default">+{queue.length} nesta etiqueta</Badge>}
               <Badge variant={lowest < 0.9 ? "destructive" : "secondary"}>
                 {pct(lowest)}% de confiança
               </Badge>
@@ -606,8 +602,6 @@ function LeituraPage() {
             </div>
           )}
 
-
-
           <div className="grid gap-2 sm:grid-cols-2">
             {field(
               "SKU",
@@ -616,7 +610,9 @@ function LeituraPage() {
                 value={pending.skuId}
                 onValueChange={(v) =>
                   setPending((p) =>
-                    p ? { ...p, skuId: v, refId: "", sizeId: "", conf: { ...p.conf, sku: 0.99 } } : p,
+                    p
+                      ? { ...p, skuId: v, refId: "", sizeId: "", conf: { ...p.conf, sku: 0.99 } }
+                      : p,
                   )
                 }
               >
@@ -642,9 +638,7 @@ function LeituraPage() {
                     type="button"
                     size="sm"
                     variant={pending.kind === "unit" ? "default" : "outline"}
-                    onClick={() =>
-                      setPending((p) => (p ? { ...p, kind: "unit", refId: "" } : p))
-                    }
+                    onClick={() => setPending((p) => (p ? { ...p, kind: "unit", refId: "" } : p))}
                   >
                     Unidade
                   </Button>
