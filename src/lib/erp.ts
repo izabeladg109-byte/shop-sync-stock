@@ -437,7 +437,7 @@ export type MovementInput = {
   note?: string;
   source?: string;
   order_ref?: string;
-  /** reserva de plataforma afetada junto com o estoque geral */
+  /** saldo exclusivo de plataforma afetado junto com o estoque físico */
   platform_id?: string | null;
 };
 

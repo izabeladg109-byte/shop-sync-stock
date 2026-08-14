@@ -937,6 +937,18 @@ export type Database = {
         }
         Returns: boolean
       }
+      purge_filtered_history: {
+        Args: {
+          p_confirm?: string
+          p_direction?: string
+          p_from: string
+          p_order?: string
+          p_sku_id?: string
+          p_table: string
+          p_to: string
+        }
+        Returns: Json
+      }
       purge_period_data: {
         Args: { p_confirm: string; p_from: string; p_to: string }
         Returns: Json

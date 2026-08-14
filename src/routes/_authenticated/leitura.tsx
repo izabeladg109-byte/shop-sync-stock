@@ -15,6 +15,7 @@ import {
 import { resolveLine, type Resolved } from "@/lib/kit-match";
 import { parsePackingLabel } from "@/lib/ocr.functions";
 import { parseLabelText } from "@/lib/label-parse";
+import { ALL_PLATFORMS, usePlatformFilter } from "@/lib/platforms";
 import {
   binarize,
   disposeOcrWorker,
@@ -25,7 +26,6 @@ import {
   signatureDistance,
   textSignature,
 } from "@/lib/local-ocr";
-
 
 import { ColorDot, KitSwatches } from "@/components/kit-swatches";
 import { Button } from "@/components/ui/button";
@@ -62,7 +62,6 @@ export const Route = createFileRoute("/_authenticated/leitura")({
 });
 
 type Pending = Resolved;
-
 
 const FOCUS_THRESHOLD = 9;
 
@@ -131,7 +130,7 @@ function sharpness(ctx: CanvasRenderingContext2D, w: number, h: number): number 
 }
 
 function pct(v: number) {
-  return Math.min(99, Math.max(1, Math.round(v * 100)));
+  return Math.min(99, Math.max(0, Math.round(v * 100)));
 }
 
 function LeituraPage() {
@@ -143,6 +142,7 @@ function LeituraPage() {
   const applyMovement = useApplyMovement();
   const undo = useUndoMovement();
   const parse = useServerFn(parsePackingLabel);
+  const { platformId } = usePlatformFilter();
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -157,7 +157,6 @@ function LeituraPage() {
   const skipRef = useRef(0);
   /** melhor nitidez já vista: serve de referência adaptativa por ambiente */
   const bestSharpRef = useRef(0);
-
 
   const [active, setActive] = useState(false);
   const [status, setStatus] = useState("Câmera desligada");
@@ -250,7 +249,7 @@ function LeituraPage() {
         .map((item) => resolve(item))
         .filter((c): c is NonNullable<ReturnType<typeof resolveLine>> => c !== null);
       if (resolved.length === 0) {
-        setStatus("Item lido não está no cadastro — confira SKU, cor e tamanho");
+        setStatus("Não foi possível identificar a etiqueta com segurança.");
         return false;
       }
       pausedRef.current = true;
@@ -358,14 +357,13 @@ function LeituraPage() {
           /* fallback é opcional: segue com OCR local */
         }
       }
-      setStatus("Nada reconhecido — aproxime ou ligue o modo nitidez");
+      setStatus("Não foi possível identificar a etiqueta com segurança. Continuando a leitura…");
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "Falha na leitura");
     } finally {
       busyRef.current = false;
     }
   }, [handOff, parse]);
-
 
   // o loop usa uma ref para não reiniciar o intervalo a cada re-render
   const scanRef = useRef(scan);
@@ -418,7 +416,6 @@ function LeituraPage() {
     setStatus("Procurando etiqueta…");
   }
 
-
   async function confirm() {
     if (!pending) return;
     try {
@@ -433,6 +430,7 @@ function LeituraPage() {
         affect_formed: false,
         source: "packing_list",
         note: `Leitura: ${pending.raw}`,
+        platform_id: platformId === ALL_PLATFORMS ? null : platformId,
       });
       const sizeName = sizes.find((s) => s.id === pending.sizeId)?.name ?? "";
       const refName =
@@ -468,8 +466,12 @@ function LeituraPage() {
       >
         <div className="mb-1 flex items-center justify-between gap-2">
           <span className="text-xs text-muted-foreground">{label}</span>
-          <span className={weak ? "text-xs font-semibold text-destructive" : "text-xs text-muted-foreground"}>
-            {pct(confidence)}%
+          <span
+            className={
+              weak ? "text-xs font-semibold text-destructive" : "text-xs text-muted-foreground"
+            }
+          >
+            {confidence <= 0 ? "Não identificado" : `${pct(confidence)}%`}
           </span>
         </div>
         {node}
@@ -508,7 +510,6 @@ function LeituraPage() {
             {active ? "Parar câmera" : "Ligar câmera"}
           </Button>
         </div>
-
       </header>
 
       <section className="card-elevated overflow-hidden">
@@ -546,9 +547,7 @@ function LeituraPage() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="min-w-0 font-display text-lg font-semibold">Confirmar baixa</h2>
             <div className="flex shrink-0 items-center gap-2">
-              {queue.length > 0 && (
-                <Badge variant="default">+{queue.length} nesta etiqueta</Badge>
-              )}
+              {queue.length > 0 && <Badge variant="default">+{queue.length} nesta etiqueta</Badge>}
               <Badge variant={lowest < 0.9 ? "destructive" : "secondary"}>
                 {pct(lowest)}% de confiança
               </Badge>
@@ -603,8 +602,6 @@ function LeituraPage() {
             </div>
           )}
 
-
-
           <div className="grid gap-2 sm:grid-cols-2">
             {field(
               "SKU",
@@ -613,7 +610,9 @@ function LeituraPage() {
                 value={pending.skuId}
                 onValueChange={(v) =>
                   setPending((p) =>
-                    p ? { ...p, skuId: v, refId: "", sizeId: "", conf: { ...p.conf, sku: 0.99 } } : p,
+                    p
+                      ? { ...p, skuId: v, refId: "", sizeId: "", conf: { ...p.conf, sku: 0.99 } }
+                      : p,
                   )
                 }
               >
@@ -639,9 +638,7 @@ function LeituraPage() {
                     type="button"
                     size="sm"
                     variant={pending.kind === "unit" ? "default" : "outline"}
-                    onClick={() =>
-                      setPending((p) => (p ? { ...p, kind: "unit", refId: "" } : p))
-                    }
+                    onClick={() => setPending((p) => (p ? { ...p, kind: "unit", refId: "" } : p))}
                   >
                     Unidade
                   </Button>
@@ -733,7 +730,7 @@ function LeituraPage() {
             )}
           </div>
 
-          <p className="text-xs text-muted-foreground">Lido: {pending.raw}</p>
+          <p className="text-xs text-muted-foreground">Texto extraído: {pending.raw}</p>
 
           <div className="flex flex-wrap gap-2">
             <Button

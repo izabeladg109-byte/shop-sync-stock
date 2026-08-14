@@ -80,7 +80,14 @@ const TONE_STYLE: Record<Tone, string> = {
 };
 
 function SuggestionCard({ s }: { s: Suggestion }) {
-  const Icon = s.tone === "danger" ? AlertTriangle : s.tone === "warn" ? AlertTriangle : s.tone === "ok" ? CheckCircle2 : Info;
+  const Icon =
+    s.tone === "danger"
+      ? AlertTriangle
+      : s.tone === "warn"
+        ? AlertTriangle
+        : s.tone === "ok"
+          ? CheckCircle2
+          : Info;
   return (
     <li className={cn("flex min-w-0 gap-2 rounded-xl border p-2.5", TONE_STYLE[s.tone])}>
       <Icon className="mt-0.5 size-4 shrink-0" />
@@ -139,15 +146,13 @@ function Simulacao({
       antes: computeKitAvailable(k.id, size.id, kitColors, stock),
       depois: computeKitAvailable(k.id, size.id, kitColors, depoisStock),
     }));
-    const limitante =
-      antes.length === 0 ? null : antes.reduce((a, b) => (b.qty < a.qty ? b : a));
+    const limitante = antes.length === 0 ? null : antes.reduce((a, b) => (b.qty < a.qty ? b : a));
     return { usados, antes, possivel, efetivo, outros, limitante };
   }, [kit, size, kitColors, colors, stock, qty, skuKits]);
 
   if (skus.length === 0) return null;
 
-  const selectCls =
-    "h-9 w-full min-w-0 rounded-md border border-border bg-background px-2 text-sm";
+  const selectCls = "h-9 w-full min-w-0 rounded-md border border-border bg-background px-2 text-sm";
 
   return (
     <div className="card-elevated space-y-3 p-3">
@@ -183,7 +188,11 @@ function Simulacao({
           <span className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">
             Kit
           </span>
-          <select className={selectCls} value={kit?.id ?? ""} onChange={(e) => setKitId(e.target.value)}>
+          <select
+            className={selectCls}
+            value={kit?.id ?? ""}
+            onChange={(e) => setKitId(e.target.value)}
+          >
             {skuKits.length === 0 && <option value="">Sem kits</option>}
             {skuKits.map((k) => (
               <option key={k.id} value={k.id}>
@@ -196,7 +205,11 @@ function Simulacao({
           <span className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">
             Tamanho
           </span>
-          <select className={selectCls} value={size?.id ?? ""} onChange={(e) => setSizeId(e.target.value)}>
+          <select
+            className={selectCls}
+            value={size?.id ?? ""}
+            onChange={(e) => setSizeId(e.target.value)}
+          >
             {skuSizes.length === 0 && <option value="">Sem tamanhos</option>}
             {skuSizes.map((s) => (
               <option key={s.id} value={s.id}>
@@ -228,7 +241,9 @@ function Simulacao({
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <div className="rounded-lg border border-border p-2">
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Solicitado</p>
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                Solicitado
+              </p>
               <p className="font-display text-lg font-semibold">{qty}</p>
             </div>
             <div className="rounded-lg border border-border p-2">
@@ -362,7 +377,7 @@ function SugestoesPage() {
   const { data: allocations = [] } = useAllocations();
   const { platformId, isAll: allPlatforms } = usePlatformFilter();
 
-  /** Com plataforma selecionada, as sugestões olham só a parcela reservada. */
+  /** As sugestões sempre respeitam o saldo isolado do escopo selecionado. */
   const stock = useMemo(
     () => viewStock(rawStock, allocations, platformId),
     [rawStock, allocations, platformId],
@@ -490,9 +505,7 @@ function SugestoesPage() {
           });
         }
 
-        const topKitFaltando = kitsSugeridos.find(
-          (k) => (weights[k.id] ?? 0) > 0 && k.value === 0,
-        );
+        const topKitFaltando = kitsSugeridos.find((k) => (weights[k.id] ?? 0) > 0 && k.value === 0);
         if (topKitFaltando) {
           sugestoes.push({
             id: `kit-bloqueado-${topKitFaltando.id}`,
@@ -578,9 +591,7 @@ function SugestoesPage() {
           porCor: demandaCor,
           porKit: rankKits(outs, skuKits).map((r) => ({
             ...r,
-            node: (
-              <KitSwatches kitId={r.id} kitColors={kitColors} colors={colors} name={r.name} />
-            ),
+            node: <KitSwatches kitId={r.id} kitColors={kitColors} colors={colors} name={r.name} />,
           })),
           semComponentes: skuKits.filter(
             (k) => kitColors.filter((kc) => kc.kit_id === k.id).length === 0,
@@ -606,7 +617,7 @@ function SugestoesPage() {
         <PlatformFilter />
         {!allPlatforms && (
           <span className="text-xs text-muted-foreground">
-            Sugestões calculadas apenas sobre o estoque reservado e as vendas desta plataforma.
+            Sugestões calculadas apenas sobre o saldo exclusivo e as vendas desta plataforma.
           </span>
         )}
       </div>
@@ -653,7 +664,11 @@ function SugestoesPage() {
             <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
               <Kpi label="Saídas no período" value={a.outsTotal} tone="accent" />
               <Kpi label="Unidades em estoque" value={a.estoque} />
-              <Kpi label="Saídas em kit" value={`${(a.mix.kitShare * 100).toFixed(0)}%`} tone="brand" />
+              <Kpi
+                label="Saídas em kit"
+                value={`${(a.mix.kitShare * 100).toFixed(0)}%`}
+                tone="brand"
+              />
               <Kpi
                 label="Variações críticas"
                 value={a.criticas.length}

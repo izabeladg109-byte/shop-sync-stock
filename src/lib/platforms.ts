@@ -7,9 +7,8 @@ import { invalidateKeys, logAudit, type StockUnit } from "@/lib/erp";
 /**
  * Camada de plataforma.
  *
- * Plataforma NÃO é um segundo estoque. É uma reserva (alocação) de parte do
- * estoque geral que já existe. A soma das reservas de todas as plataformas
- * nunca pode passar do estoque real — isso é garantido por trigger no banco.
+ * Cada plataforma possui um saldo exclusivo dentro do estoque físico total.
+ * O saldo geral é somente a parcela ainda não atribuída a plataforma alguma.
  */
 
 export type Platform = {
@@ -32,10 +31,14 @@ export type StockAllocation = {
   qty: number;
 };
 
-/** Valor especial do filtro: estoque geral (sem recorte por plataforma). */
+/** Valor especial do filtro: saldo geral não atribuído. */
 export const ALL_PLATFORMS = "all";
 
-const CATALOG = { staleTime: 5 * 60_000, gcTime: 30 * 60_000, refetchOnWindowFocus: false } as const;
+const CATALOG = {
+  staleTime: 5 * 60_000,
+  gcTime: 30 * 60_000,
+  refetchOnWindowFocus: false,
+} as const;
 const LIVE = { staleTime: 30_000, gcTime: 10 * 60_000, refetchOnWindowFocus: false } as const;
 
 export function usePlatforms(trash = false) {
@@ -65,7 +68,7 @@ export function useAllocations() {
   });
 }
 
-/** Define a reserva de uma plataforma para SKU+cor+tamanho. */
+/** Define o saldo exclusivo de uma plataforma para SKU+cor+tamanho. */
 export function useSetAllocation() {
   const qc = useQueryClient();
   return useMutation({
@@ -88,7 +91,7 @@ export function useSetAllocation() {
     },
     onSuccess: () => {
       invalidateKeys(qc, ["stock_allocations", "audit_logs"]);
-      toast.success("✓ Reserva atualizada");
+      toast.success("✓ Saldo da plataforma atualizado");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -162,7 +165,7 @@ export function usePlatformCrud() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  /** Exclusão específica: apaga a plataforma e apenas as reservas dela. */
+  /** Exclusão específica: apaga a plataforma e apenas os saldos dela. */
   const hardDelete = useMutation({
     mutationFn: async (id: string) => {
       const { error: eAlloc } = await supabase
@@ -174,7 +177,7 @@ export function usePlatformCrud() {
       if (error) throw new Error(error.message);
       await logAudit("exclusao_definitiva", "platforms", id);
     },
-    onSuccess: () => done("Plataforma excluída — estoque geral preservado"),
+    onSuccess: () => done("Plataforma excluída — estoque físico preservado"),
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -225,14 +228,14 @@ export function allocationOf(
   );
 }
 
-/** Total reservado (todas as plataformas) para uma cor/tamanho. */
+/** Total atribuído a todas as plataformas para uma cor/tamanho. */
 export function reservedOf(allocations: StockAllocation[], colorId: string, sizeId: string) {
   return allocations
     .filter((a) => a.color_id === colorId && a.size_id === sizeId)
     .reduce((sum, a) => sum + a.qty, 0);
 }
 
-/** Estoque livre = geral - reservado por todas as plataformas. */
+/** Saldo geral não atribuído = físico total - saldos exclusivos. */
 export function freeOf(
   stock: StockUnit[],
   allocations: StockAllocation[],
@@ -244,15 +247,20 @@ export function freeOf(
 }
 
 /**
- * Visão de estoque conforme o filtro: no geral usa o estoque real; com
- * plataforma selecionada usa apenas o que está reservado para ela.
+ * Visão isolada: geral mostra só o saldo não atribuído; cada plataforma mostra
+ * exclusivamente seu próprio saldo.
  */
 export function viewStock(
   stock: StockUnit[],
   allocations: StockAllocation[],
   platformId: string,
 ): StockUnit[] {
-  if (platformId === ALL_PLATFORMS) return stock;
+  if (platformId === ALL_PLATFORMS) {
+    return stock.map((s) => ({
+      ...s,
+      qty: freeOf(stock, allocations, s.color_id, s.size_id),
+    }));
+  }
   return stock.map((s) => ({
     ...s,
     qty: allocationOf(allocations, platformId, s.color_id, s.size_id),

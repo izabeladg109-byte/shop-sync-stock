@@ -20,7 +20,13 @@ import {
   useUndoMovement,
   MOVEMENT_SOURCES,
 } from "@/lib/erp";
-import { ALL_PLATFORMS, usePlatformFilter, usePlatforms } from "@/lib/platforms";
+import {
+  ALL_PLATFORMS,
+  useAllocations,
+  usePlatformFilter,
+  usePlatforms,
+  viewStock,
+} from "@/lib/platforms";
 import { ColorDot, KitSwatches } from "@/components/kit-swatches";
 import { PlatformBadge, PlatformPicker } from "@/components/platform-filter";
 import { Badge } from "@/components/ui/badge";
@@ -101,6 +107,7 @@ function MovimentacaoPage() {
   const { data: kits = [] } = useKits();
   const { data: kitColors = [] } = useKitColors();
   const { data: stock = [] } = useStockUnits();
+  const { data: allocations = [] } = useAllocations();
   const { data: today = [] } = useTodayMovements();
 
   const applyMovement = useApplyMovement();
@@ -112,6 +119,10 @@ function MovimentacaoPage() {
   /** plataforma da movimentação: começa no filtro global e pode ser trocada */
   const [platform, setPlatform] = useState<string>(ALL_PLATFORMS);
   const movementPlatform = platform === ALL_PLATFORMS ? null : platform;
+  const scopedStock = useMemo(
+    () => viewStock(stock, allocations, platform),
+    [stock, allocations, platform],
+  );
   useEffect(() => {
     setPlatform(globalPlatform);
   }, [globalPlatform]);
@@ -146,10 +157,10 @@ function MovimentacaoPage() {
   const kitPossible = useMemo(() => {
     const map = new Map<string, number>();
     for (const k of skuKits) {
-      map.set(k.id, kitPossibleTotal(k.id, k.sku_id, sizes, kitColors, stock));
+      map.set(k.id, kitPossibleTotal(k.id, k.sku_id, sizes, kitColors, scopedStock));
     }
     return map;
-  }, [skuKits, sizes, kitColors, stock]);
+  }, [skuKits, sizes, kitColors, scopedStock]);
 
   function pickSku(id: string) {
     setSkuId(id);
@@ -170,12 +181,12 @@ function MovimentacaoPage() {
   const current = useMemo(() => {
     if (!refId || !sizeId) return null;
     if (isKitMode) {
-      const value = computeKitAvailable(refId, sizeId, kitColors, stock);
+      const value = computeKitAvailable(refId, sizeId, kitColors, scopedStock);
       return { value, label: "kits possíveis neste tamanho", level: alertLevel(value) };
     }
-    const value = stockOf(stock, refId, sizeId);
+    const value = stockOf(scopedStock, refId, sizeId);
     return { value, label: "unidades em estoque", level: alertLevel(value) };
-  }, [isKitMode, refId, sizeId, stock, kitColors]);
+  }, [isKitMode, refId, sizeId, scopedStock, kitColors]);
 
   const gradeTotal = skuSizes.reduce((a, s) => a + (grade[s.id] ?? 0), 0);
   const busy = applyMovement.isPending || applyGrade.isPending;
@@ -300,9 +311,9 @@ function MovimentacaoPage() {
             <p className="text-xs text-muted-foreground">
               {movementPlatform
                 ? direction === "in"
-                  ? "A entrada soma no estoque geral e já reserva a mesma quantidade para esta plataforma."
-                  : "A saída abate o estoque geral e a reserva desta plataforma (bloqueia se não houver reserva suficiente)."
-                : "Sem plataforma: movimenta apenas o estoque geral, sem mexer em reservas."}
+                  ? "A entrada pertence exclusivamente a esta plataforma e também compõe o total físico."
+                  : "A saída usa somente o saldo exclusivo desta plataforma."
+                : "Sem plataforma: movimenta somente o saldo geral não atribuído."}
             </p>
           </div>
         )}
@@ -420,8 +431,8 @@ function MovimentacaoPage() {
               {skuSizes.map((s) => {
                 const value = refId
                   ? isKitMode
-                    ? computeKitAvailable(refId, s.id, kitColors, stock)
-                    : stockOf(stock, refId, s.id)
+                    ? computeKitAvailable(refId, s.id, kitColors, scopedStock)
+                    : stockOf(scopedStock, refId, s.id)
                   : null;
                 return (
                   <Chip key={s.id} active={sizeId === s.id} onClick={() => setSizeId(s.id)}>
