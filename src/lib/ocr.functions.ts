@@ -51,6 +51,11 @@ function conf(value: unknown, fallback: number): number {
   return Math.min(0.99, n > 1 ? n / 100 : n);
 }
 
+function known(value: string, options: string[]) {
+  const normalized = value.trim().toLocaleUpperCase("pt-BR");
+  return options.some((option) => option.trim().toLocaleUpperCase("pt-BR") === normalized);
+}
+
 export const parsePackingLabel = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: Input) => {
@@ -101,7 +106,7 @@ export const parsePackingLabel = createServerFn({ method: "POST" })
     let items: ParsedLine[] = [];
     try {
       const parsed = JSON.parse(raw) as { items?: RawItem[] };
-      items = (parsed.items ?? []).map((i) => {
+       items = (parsed.items ?? []).map((i) => {
         const list = Array.isArray(i.colors)
           ? i.colors.map((c) => String(c ?? "").trim()).filter(Boolean)
           : String(i.color ?? "")
@@ -109,19 +114,22 @@ export const parsePackingLabel = createServerFn({ method: "POST" })
               .map((c) => c.trim())
               .filter(Boolean);
         const c = i.confidence ?? {};
-        return {
-          sku: String(i.sku ?? "").trim(),
-          colors: list,
-          size: String(i.size ?? "").trim(),
+         const sku = String(i.sku ?? "").trim();
+         const size = String(i.size ?? "").trim();
+         const safeColors = list.filter((value) => known(value, [...data.colors, ...data.kits]));
+         return {
+           sku: known(sku, data.skus) ? sku : "",
+           colors: safeColors,
+           size: known(size, data.sizes) ? size : "",
           qty: Number(i.qty) > 0 ? Math.floor(Number(i.qty)) : 1,
           confidence: {
-            sku: conf(c["sku"], 0.6),
-            colors: conf(c["colors"] ?? c["color"], 0.6),
-            size: conf(c["size"], 0.6),
-            qty: conf(c["qty"], 0.8),
+             sku: known(sku, data.skus) ? conf(c["sku"], 0) : 0,
+             colors: safeColors.length === list.length ? conf(c["colors"] ?? c["color"], 0) : 0,
+             size: known(size, data.sizes) ? conf(c["size"], 0) : 0,
+             qty: conf(c["qty"], 0),
           },
         };
-      });
+       }).filter((item) => item.sku && item.size && item.colors.length > 0);
     } catch {
       items = [];
     }

@@ -66,7 +66,7 @@ function findQty(line: string): { qty: number; conf: number } {
     const n = Number(m?.[1]);
     if (Number.isFinite(n) && n > 0 && n < 500) return { qty: n, conf: 0.92 };
   }
-  return { qty: 1, conf: 0.6 };
+  return { qty: 1, conf: 0 };
 }
 
 /**
@@ -103,7 +103,7 @@ export function fuzzyFind(line: string, option: string): { score: number; at: nu
   return best;
 }
 
-const MIN_SCORE = 0.78;
+const MIN_SCORE = 0.88;
 
 /** Encontra a melhor opção da lista dentro da linha. */
 function findIn(
@@ -157,7 +157,7 @@ function looseSize(line: string, sizes: string[]): { value: string; conf: number
     const o = norm(s);
     if (!o) continue;
     if (new RegExp(`(^|[^A-Z0-9])${o.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Z0-9]|$)`).test(t)) {
-      return { value: s, conf: 0.8 };
+      return { value: s, conf: 0.9 };
     }
   }
   return null;
@@ -170,38 +170,30 @@ function looseSize(line: string, sizes: string[]): { value: string; conf: number
 export function parseLabelText(text: string, lists: Lists, baseConf = 0.7): ParsedLine[] {
   const raw = text.split(/\r?\n/);
   const out: ParsedLine[] = [];
-  let lastSku = "";
-  let lastSize = "";
-
   for (const original of raw) {
     const line = original.trim();
     if (line.length < 2) continue;
     if (IGNORE.some((re) => re.test(line))) continue;
 
-    const sku = findIn(line, lists.skus, 0.74);
+    const sku = findIn(line, lists.skus, 0.9);
     const colors = findAll(line, lists.colors);
     const kit = findIn(line, lists.kits);
-    const size = findIn(line, lists.sizes, 0.85) ?? looseSize(line, lists.sizes);
+    const size = findIn(line, lists.sizes, 0.9) ?? looseSize(line, lists.sizes);
     const qty = findQty(line);
 
-    if (sku) lastSku = sku.value;
-    if (size) lastSize = size.value;
-
-    const skuValue = sku?.value ?? lastSku;
-    if (!skuValue) continue;
-
-    // precisa ter pelo menos cor ou kit para virar item
-    if (colors.values.length === 0 && !kit) continue;
+    // Uma linha só vira item quando contém evidência própria e forte. Valores de
+    // linhas anteriores nunca são herdados: o cadastro valida, mas não completa OCR.
+    if (!sku || !size || (colors.values.length === 0 && !kit)) continue;
 
     out.push({
-      sku: skuValue,
+      sku: sku.value,
       colors: colors.values.length > 0 ? colors.values : kit ? [kit.value] : [],
-      size: size?.value ?? lastSize,
+      size: size.value,
       qty: qty.qty,
       confidence: {
-        sku: Math.min(0.97, (sku?.conf ?? 0.65) * baseConf + 0.25),
-        colors: Math.min(0.97, (colors.conf || kit?.conf || 0.5) * baseConf + 0.25),
-        size: Math.min(0.97, (size?.conf ?? 0.4) * baseConf + 0.2),
+        sku: Math.min(sku.conf, baseConf),
+        colors: Math.min(colors.conf || kit?.conf || 0, baseConf),
+        size: Math.min(size.conf, baseConf),
         qty: qty.conf,
       },
     });
@@ -212,22 +204,22 @@ export function parseLabelText(text: string, lists: Lists, baseConf = 0.7): Pars
   // única sobre o texto inteiro, com confiança menor.
   if (out.length === 0) {
     const flat = raw.filter((l) => !IGNORE.some((re) => re.test(l))).join(" ");
-    const sku = findIn(flat, lists.skus, 0.74);
+    const sku = findIn(flat, lists.skus, 0.93);
     const colors = findAll(flat, lists.colors);
     const kit = findIn(flat, lists.kits);
-    const size = findIn(flat, lists.sizes, 0.85) ?? looseSize(flat, lists.sizes);
-    if (sku && (colors.values.length > 0 || kit)) {
+    const size = findIn(flat, lists.sizes, 0.93) ?? looseSize(flat, lists.sizes);
+    if (sku && size && (colors.values.length > 0 || kit)) {
       const qty = findQty(flat);
       out.push({
         sku: sku.value,
         colors: colors.values.length > 0 ? colors.values : [kit!.value],
-        size: size?.value ?? "",
+        size: size.value,
         qty: qty.qty,
         confidence: {
-          sku: Math.min(0.9, sku.conf * baseConf + 0.15),
-          colors: Math.min(0.85, (colors.conf || 0.6) * baseConf + 0.15),
-          size: Math.min(0.85, (size?.conf ?? 0.35) * baseConf + 0.1),
-          qty: qty.conf * 0.8,
+          sku: Math.min(sku.conf, baseConf * 0.9),
+          colors: Math.min(colors.conf || kit?.conf || 0, baseConf * 0.9),
+          size: Math.min(size.conf, baseConf * 0.9),
+          qty: qty.conf ? Math.min(qty.conf, baseConf * 0.9) : 0,
         },
       });
     }

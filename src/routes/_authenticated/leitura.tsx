@@ -250,7 +250,7 @@ function LeituraPage() {
         .map((item) => resolve(item))
         .filter((c): c is NonNullable<ReturnType<typeof resolveLine>> => c !== null);
       if (resolved.length === 0) {
-        setStatus("Item lido não está no cadastro — confira SKU, cor e tamanho");
+        setStatus("Não foi possível identificar a etiqueta com segurança.");
         return false;
       }
       pausedRef.current = true;
@@ -358,7 +358,7 @@ function LeituraPage() {
           /* fallback é opcional: segue com OCR local */
         }
       }
-      setStatus("Nada reconhecido — aproxime ou ligue o modo nitidez");
+       setStatus("Não foi possível identificar a etiqueta com segurança. Continuando a leitura…");
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "Falha na leitura");
     } finally {
@@ -733,7 +733,7 @@ function LeituraPage() {
             )}
           </div>
 
-          <p className="text-xs text-muted-foreground">Lido: {pending.raw}</p>
+          <p className="text-xs text-muted-foreground">Texto extraído: {pending.raw}</p>
 
           <div className="flex flex-wrap gap-2">
             <Button

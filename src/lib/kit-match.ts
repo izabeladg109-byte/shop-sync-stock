@@ -66,14 +66,14 @@ export function resolveLine(line: OcrLine, cat: Catalog): Resolved | null {
   const bySku = line.sku ? bestMatch(line.sku, skus, (s) => s.seller_sku) : null;
   const byName = line.sku ? bestMatch(line.sku, skus, (s) => s.name) : null;
   const skuHit = bySku && (!byName || bySku.score >= byName.score) ? bySku : byName;
-  if (!skuHit || skuHit.score < 0.4) return null;
+  if (!skuHit || skuHit.score < 0.9 || line.confidence.sku < 0.7) return null;
   const skuId = skuHit.item.id;
 
   // ---- Tamanho ---------------------------------------------------------
   const skuSizes = sizes.filter((s) => s.sku_id === skuId);
   const sizeHit = line.size ? bestMatch(line.size, skuSizes, (s) => s.name) : null;
-  const size = sizeHit?.item ?? skuSizes[0];
-  if (!size) return null;
+  const size = sizeHit?.item;
+  if (!size || (sizeHit?.score ?? 0) < 0.9 || line.confidence.size < 0.7) return null;
 
   // ---- Cores lidas -> cores cadastradas do SKU -------------------------
   const skuColors = colors.filter((c) => c.sku_id === skuId);
@@ -83,7 +83,7 @@ export function resolveLine(line: OcrLine, cat: Catalog): Resolved | null {
   const matched: { color: Color; score: number }[] = [];
   for (const name of parts) {
     const hit = bestMatch(name, skuColors, (c) => c.name);
-    if (hit && hit.score >= 0.45 && !matched.some((m) => m.color.id === hit.item.id)) {
+    if (hit && hit.score >= 0.88 && !matched.some((m) => m.color.id === hit.item.id)) {
       matched.push({ color: hit.item, score: hit.score });
     }
   }
@@ -100,7 +100,7 @@ export function resolveLine(line: OcrLine, cat: Catalog): Resolved | null {
     raw: `${line.sku} · ${line.colors.join(" + ")} · ${line.size} x${line.qty}`,
     confBase: {
       sku: Math.min(line.confidence.sku, skuHit.score),
-      size: Math.min(line.confidence.size, sizeHit?.score ?? 0.55),
+      size: Math.min(line.confidence.size, sizeHit.score),
       qty: line.confidence.qty,
     },
   };
@@ -146,8 +146,8 @@ export function resolveLine(line: OcrLine, cat: Catalog): Resolved | null {
     // nenhum kit exato: kits que contêm todas as cores lidas
     const supersets = compositions.filter((c) => matchedIds.every((id) => c.ids.includes(id)));
     if (supersets.length === 1) {
-      return make("kit", supersets[0]!.kit.id, colorScore * 0.8,
-        "Kit que contém todas as cores lidas");
+      return make("kit", "", colorScore * 0.6,
+        "A etiqueta não trouxe a composição completa do kit", true, supersets.map((c) => c.kit.id));
     }
     if (supersets.length > 1) {
       return make("kit", "", colorScore * 0.5,
@@ -166,11 +166,8 @@ export function resolveLine(line: OcrLine, cat: Catalog): Resolved | null {
       .sort((a, b) => b.score - a.score);
     const top = scored[0];
     const second = scored[1];
-    if (top && top.score >= 0.7 && (!second || top.score - second.score >= 0.12)) {
-      return make("kit", top.kit.id, top.score, "Nome do kit reconhecido na etiqueta");
-    }
     if (top) {
-      return make("kit", "", 0.4, "Kit citado, mas sem composição clara", true,
+      return make("kit", "", Math.min(0.61, top.score), "Kit citado, mas sem composição real suficiente", true,
         scored.filter((s) => s.score >= 0.5).map((s) => s.kit.id));
     }
   }

@@ -545,7 +545,7 @@ function EstoquePage() {
                                     color.id,
                                     size.id,
                                   );
-                                  const current = isAll ? total : alloc;
+                                   const current = isAll ? free : alloc;
                                   return (
                                   <td key={size.id} className="px-1 py-1.5 sm:px-2">
                                     <QtyCell
@@ -558,8 +558,8 @@ function EstoquePage() {
                                               sku_id: sku.id,
                                               color_id: color.id,
                                               size_id: size.id,
-                                              qty: next,
-                                              previous: current,
+                                               qty: reserved + next,
+                                               previous: total,
                                               note: `Alteração direta no estoque (${color.name} · ${size.name})`,
                                             })
                                           : setAllocation.mutate({
@@ -572,11 +572,11 @@ function EstoquePage() {
                                       }
                                     />
                                     <span className="mt-0.5 block text-center text-[10px] leading-tight text-muted-foreground">
-                                      {isAll
-                                        ? reserved > 0
-                                          ? `livre ${free} · reservado ${reserved}`
-                                          : "sem reserva"
-                                        : `de ${total} · livre ${free}`}
+                                       {isAll
+                                         ? reserved > 0
+                                           ? `geral ${free} · plataformas ${reserved}`
+                                           : "saldo geral"
+                                         : `exclusivo · físico total ${total}`}
                                     </span>
                                   </td>
                                   );

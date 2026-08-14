@@ -499,33 +499,20 @@ function ConfiguracoesPage() {
 
   const purge = useMutation({
     mutationFn: async () => {
-      // Busca os IDs primeiro: o PostgREST nem sempre devolve a contagem no delete,
-      // o que fazia a tela mostrar "0 excluído" mesmo apagando registros.
-      const { data, error: selError } = await applyPurgeFilters(
-        supabase.from(purgeTable as never).select("id"),
-      );
-      if (selError) throw selError;
-      const ids = ((data ?? []) as { id: string }[]).map((r) => r.id).filter(Boolean);
-      if (ids.length === 0) return 0;
-
-      let removed = 0;
-      for (let i = 0; i < ids.length; i += 200) {
-        const chunk = ids.slice(i, i + 200);
-        const { data: del, error } = await supabase
-          .from(purgeTable as never)
-          .delete()
-          .in("id", chunk)
-          .select("id");
-        if (error) throw error;
-        removed += ((del ?? []) as { id: string }[]).length;
-      }
-      if (removed === 0) {
-        throw new Error("Nenhum registro pôde ser excluído — verifique suas permissões.");
-      }
-      return removed;
+      const { data, error } = await supabase.rpc("purge_filtered_history", {
+        p_table: purgeTable,
+        p_from: purgeFrom,
+        p_to: purgeTo,
+        p_sku_id: supportsSku && pSku !== "all" ? pSku : null,
+        p_direction: supportsDirection && pDirection !== "all" ? pDirection : null,
+        p_order: supportsOrder && pOrder.trim() ? pOrder.trim() : null,
+        p_confirm: "EXCLUIR",
+      } as never);
+      if (error) throw new Error(error.message);
+      return data as unknown as { found: number; deleted: number };
     },
-    onSuccess: (count) => {
-      toast.success(`${count} registro(s) excluído(s) definitivamente.`);
+    onSuccess: (result) => {
+      toast.success(`${result.deleted} de ${result.found} registro(s) encontrado(s) foram excluídos.`);
       setConfirmOpen(false);
       setConfirmText("");
       void qc.invalidateQueries();
