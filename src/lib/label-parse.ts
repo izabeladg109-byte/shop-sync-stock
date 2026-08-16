@@ -7,9 +7,8 @@ import { similarity } from "@/lib/color-names";
  * Não usa IA: casa o texto com o que já existe no cadastro (SKUs, cores,
  * tamanhos e kits). Dados pessoais e logísticos são descartados.
  *
- * O casamento é APROXIMADO (tolerante a erro de OCR), mas nunca inventa:
- * só devolve valores que existem no cadastro. A decisão final de kit/cor é
- * feita depois, em `kit-match`, pela composição real cadastrada.
+ * O casamento usado para confirmar é exato depois de normalizar acentos e
+ * separadores. Similaridade nunca promove texto parcial a item do cadastro.
  */
 
 export type Lists = {
@@ -108,6 +107,18 @@ export function fuzzyFind(
 
 const MIN_SCORE = 0.88;
 
+function exactFind(line: string, options: string[]): { value: string; conf: number } | null {
+  const target = ` ${norm(line)} `;
+  const matches = options
+    .filter((option) => norm(option).length > 0)
+    .filter((option) => target.includes(` ${norm(option)} `))
+    .sort((a, b) => norm(b).length - norm(a).length);
+  if (matches.length === 0) return null;
+  const longest = norm(matches[0] ?? "").length;
+  const equallySpecific = matches.filter((value) => norm(value).length === longest);
+  return equallySpecific.length === 1 ? { value: equallySpecific[0] ?? "", conf: 0.98 } : null;
+}
+
 /** Encontra a melhor opção da lista dentro da linha. */
 function findIn(
   line: string,
@@ -129,12 +140,18 @@ function findIn(
 
 /** Todas as cores presentes na linha, na ordem em que aparecem, sem sobrepor. */
 function findAll(line: string, options: string[]): { values: string[]; conf: number } {
+  const target = norm(line);
   const found: { value: string; at: number; score: number }[] = [];
   const used: [number, number][] = [];
   const scored = options
     .filter((o) => norm(o).length >= 3)
-    .map((o) => ({ opt: o, hit: fuzzyFind(line, o) }))
-    .filter((r) => r.hit.score >= MIN_SCORE)
+    .map((o) => {
+      const normalized = norm(o);
+      const boundary = new RegExp(`(^|[^A-Z0-9])${normalized.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Z0-9]|$)`);
+      const match = boundary.exec(target);
+      return { opt: o, hit: { score: match ? 1 : 0, at: match?.index ?? -1, len: normalized.length } };
+    })
+    .filter((r) => r.hit.score === 1)
     // resolve sobreposição sempre pela melhor pontuação / maior nome
     .sort((a, b) => b.hit.score - a.hit.score || norm(b.opt).length - norm(a.opt).length);
 
@@ -180,10 +197,10 @@ export function parseLabelText(text: string, lists: Lists, baseConf = 0.7): Pars
     if (line.length < 2) continue;
     if (IGNORE.some((re) => re.test(line))) continue;
 
-    const sku = findIn(line, lists.skus, 0.9);
+    const sku = exactFind(line, lists.skus);
     const colors = findAll(line, lists.colors);
-    const kit = findIn(line, lists.kits);
-    const size = findIn(line, lists.sizes, 0.9) ?? looseSize(line, lists.sizes);
+    const kit = exactFind(line, lists.kits);
+    const size = exactFind(line, lists.sizes) ?? looseSize(line, lists.sizes);
     const qty = findQty(line);
 
     // Uma linha só vira item quando contém evidência própria e forte. Valores de
@@ -204,15 +221,14 @@ export function parseLabelText(text: string, lists: Lists, baseConf = 0.7): Pars
     });
   }
 
-  // Fallback de documento: a etiqueta pode quebrar SKU e cor em linhas
-  // diferentes (colunas desalinhadas no OCR). Nesse caso tenta uma leitura
-  // única sobre o texto inteiro, com confiança menor.
+  // Etiquetas em tabela frequentemente quebram uma linha visual em 2–3 linhas
+  // do OCR. O bloco é aceito apenas com valores exatos do cadastro.
   if (out.length === 0) {
     const flat = raw.filter((l) => !IGNORE.some((re) => re.test(l))).join(" ");
-    const sku = findIn(flat, lists.skus, 0.93);
+    const sku = exactFind(flat, lists.skus);
     const colors = findAll(flat, lists.colors);
-    const kit = findIn(flat, lists.kits);
-    const size = findIn(flat, lists.sizes, 0.93) ?? looseSize(flat, lists.sizes);
+    const kit = exactFind(flat, lists.kits);
+    const size = exactFind(flat, lists.sizes) ?? looseSize(flat, lists.sizes);
     if (sku && size && (colors.values.length > 0 || kit)) {
       const qty = findQty(flat);
       out.push({
@@ -221,10 +237,10 @@ export function parseLabelText(text: string, lists: Lists, baseConf = 0.7): Pars
         size: size.value,
         qty: qty.qty,
         confidence: {
-          sku: Math.min(sku.conf, baseConf * 0.9),
-          colors: Math.min(colors.conf || kit?.conf || 0, baseConf * 0.9),
-          size: Math.min(size.conf, baseConf * 0.9),
-          qty: qty.conf ? Math.min(qty.conf, baseConf * 0.9) : 0,
+          sku: Math.min(sku.conf, baseConf),
+          colors: Math.min(colors.conf || kit?.conf || 0, baseConf),
+          size: Math.min(size.conf, baseConf),
+          qty: qty.conf ? Math.min(qty.conf, baseConf) : 0,
         },
       });
     }

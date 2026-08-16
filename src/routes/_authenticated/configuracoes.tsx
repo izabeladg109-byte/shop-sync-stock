@@ -107,7 +107,10 @@ type PurgeTable = (typeof PURGE_TABLES)[number]["table"];
 
 type StorageInfo = {
   database_bytes: number;
-  tables: { name: string; bytes: number; rows: number }[];
+  reusable_bytes: number;
+  storage_files: number;
+  storage_bytes: number;
+  tables: { name: string; bytes: number; rows: number; reusable_bytes?: number }[];
 };
 
 function formatBytes(bytes: number) {
@@ -242,12 +245,13 @@ function ConfiguracoesPage() {
   const catalog = useQuery({
     queryKey: ["export-catalog"],
     queryFn: async () => {
-      const [cats, skus, colors, sizes, kits] = await Promise.all([
+      const [cats, skus, colors, sizes, kits, platforms] = await Promise.all([
         supabase.from("categories").select("id,name").order("position"),
         supabase.from("skus").select("id,seller_sku,name,category_id").order("position"),
         supabase.from("colors").select("id,name,sku_id"),
         supabase.from("sizes").select("id,name,sku_id"),
         supabase.from("kits").select("id,name,sku_id"),
+        supabase.from("platforms").select("id,name").is("deleted_at", null),
       ]);
       const map = new Map<string, string>();
       for (const c of cats.data ?? []) map.set(c.id, c.name);
@@ -260,6 +264,9 @@ function ConfiguracoesPage() {
         categories: cats.data ?? [],
         skus: skus.data ?? [],
         kits: kits.data ?? [],
+        colors: colors.data ?? [],
+        sizes: sizes.data ?? [],
+        platforms: platforms.data ?? [],
       };
     },
     staleTime: 60_000,
@@ -456,6 +463,13 @@ function ConfiguracoesPage() {
   const [pSku, setPSku] = useState("all");
   const [pDirection, setPDirection] = useState("all");
   const [pOrder, setPOrder] = useState("");
+  const [pCategory, setPCategory] = useState("all");
+  const [pColor, setPColor] = useState("all");
+  const [pSize, setPSize] = useState("all");
+  const [pKit, setPKit] = useState("all");
+  const [pPlatform, setPPlatform] = useState("all");
+  const [pKind, setPKind] = useState("all");
+  const [pMovement, setPMovement] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmText, setConfirmText] = useState("");
 
@@ -507,14 +521,26 @@ function ConfiguracoesPage() {
         p_direction: supportsDirection && pDirection !== "all" ? pDirection : null,
         p_order: supportsOrder && pOrder.trim() ? pOrder.trim() : null,
         p_confirm: "EXCLUIR",
+        p_category_id: pCategory === "all" ? null : pCategory,
+        p_color_id: pColor === "all" ? null : pColor,
+        p_size_id: pSize === "all" ? null : pSize,
+        p_kit_id: pKit === "all" ? null : pKit,
+        p_platform_id: pPlatform === "all" ? null : pPlatform,
+        p_movement_id: pMovement.trim() || null,
+        p_kind: pKind === "all" ? null : pKind,
       } as never);
       if (error) throw new Error(error.message);
-      return data as unknown as { found: number; deleted: number };
+      const result = data as unknown as {
+        found: number; deleted: number; remaining: number; files_deleted: number;
+        files_failed: number; physical_bytes_freed: number; reusable_bytes_created: number;
+      };
+      if (result.remaining !== 0 || result.deleted !== result.found) {
+        throw new Error(`Exclusão não confirmada: ${result.remaining} registro(s) restante(s).`);
+      }
+      return result;
     },
     onSuccess: (result) => {
-      toast.success(
-        `${result.deleted} de ${result.found} registro(s) encontrado(s) foram excluídos.`,
-      );
+      toast.success(`${result.deleted} de ${result.found} excluídos; 0 restantes. Espaço físico liberado agora: ${formatBytes(result.physical_bytes_freed)}.`);
       setConfirmOpen(false);
       setConfirmText("");
       void qc.invalidateQueries();

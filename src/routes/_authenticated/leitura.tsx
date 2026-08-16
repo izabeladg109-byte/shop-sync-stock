@@ -18,6 +18,8 @@ import { parseLabelText } from "@/lib/label-parse";
 import { ALL_PLATFORMS, usePlatformFilter } from "@/lib/platforms";
 import {
   binarize,
+  binaryVariant,
+  copyCanvas,
   disposeOcrWorker,
   frameDifference,
   frameFingerprint,
@@ -63,7 +65,7 @@ export const Route = createFileRoute("/_authenticated/leitura")({
 
 type Pending = Resolved;
 
-const FOCUS_THRESHOLD = 9;
+const FOCUS_THRESHOLD = 6;
 
 function beep() {
   try {
@@ -271,8 +273,8 @@ function LeituraPage() {
     if (!video || busyRef.current || pausedRef.current || video.videoWidth === 0) return;
     busyRef.current = true;
     try {
-      // resolução dinâmica: menor no celular, o suficiente para o OCR
-      const targetWidth = Math.min(video.videoWidth, window.innerWidth < 640 ? 1000 : 1280);
+      // Mantém caracteres pequenos de etiquetas distantes; não recorta a imagem.
+      const targetWidth = Math.min(video.videoWidth, window.innerWidth < 640 ? 1440 : 1600);
       const scale = targetWidth / video.videoWidth;
       const canvas = canvasRef.current ?? document.createElement("canvas");
       canvasRef.current = canvas;
@@ -280,23 +282,15 @@ function LeituraPage() {
       canvas.height = Math.round(video.videoHeight * scale);
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
       if (!ctx) return;
-      ctx.filter = "grayscale(1) contrast(1.2)";
+      ctx.filter = "grayscale(1)";
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       ctx.filter = "none";
 
-      // 1) estabilidade: só lê quando a imagem parou de se mexer.
-      //    O limite é generoso porque a câmera é sempre na mão; e depois de
-      //    algumas tentativas seguidas a leitura acontece de qualquer jeito
-      //    (antes, o scanner podia nunca chegar a rodar o OCR).
+      // Movimento ajuda a selecionar o quadro, mas nunca bloqueia o scanner.
       const fp = frameFingerprint(ctx, canvas.width, canvas.height);
       const movement = prevFrameRef.current ? frameDifference(prevFrameRef.current, fp) : 255;
       prevFrameRef.current = fp;
-      const forced = skipRef.current >= 3;
-      if (movement > 26 && !forced) {
-        skipRef.current++;
-        setStatus("Segure firme para estabilizar a leitura…");
-        return;
-      }
+      const forced = skipRef.current >= 2;
 
       // 2) mesma etiqueta parada na frente da câmera: não reprocessa
       if (doneFrameRef.current && frameDifference(doneFrameRef.current, fp) < 3) {
@@ -309,7 +303,7 @@ function LeituraPage() {
       bestSharpRef.current = Math.max(bestSharpRef.current * 0.97, sharp);
       const focusOk = sharp >= Math.max(FOCUS_THRESHOLD, bestSharpRef.current * 0.4);
       setFocused(focusOk);
-      if (!focusOk && !forced) {
+      if (!focusOk && movement < 6 && !forced) {
         skipRef.current++;
         setStatus("Aproxime ou aguarde o foco.");
         return;
@@ -317,11 +311,20 @@ function LeituraPage() {
       skipRef.current = 0;
       setStatus("Lendo etiqueta…");
 
-      // 4) OCR local — não consome crédito de IA.
-      //    Binarização adaptativa antes do OCR: é o que faz a etiqueta
-      //    térmica ser realmente reconhecida sob luz irregular.
-      binarize(ctx, canvas.width, canvas.height, sharpModeRef.current);
-      const { text, confidence } = await recognizeCanvas(canvas);
+      // OCR no quadro original primeiro. A binarização só é tentada quando o
+      // original não valida, pois em etiquetas nítidas ela pode apagar traços.
+      const original = copyCanvas(canvas);
+      let { text, confidence } = await recognizeCanvas(original);
+      let items = parseLabelText(text, listsRef.current, confidence);
+      if (items.length === 0) {
+        const retry = await recognizeCanvas(binaryVariant(original, sharpModeRef.current));
+        const retryItems = parseLabelText(retry.text, listsRef.current, retry.confidence);
+        if (retryItems.length > 0 || retry.confidence > confidence) {
+          text = retry.text;
+          confidence = retry.confidence;
+          items = retryItems;
+        }
+      }
       const sig = textSignature(text);
       if (sig.length < 10) {
         setStatus("Nada legível ainda — aproxime a etiqueta");
@@ -333,7 +336,6 @@ function LeituraPage() {
         return;
       }
 
-      const items = parseLabelText(text, listsRef.current, Math.max(0.5, confidence));
       if (items.length > 0) {
         lastSigRef.current = sig;
         doneFrameRef.current = fp;
@@ -345,7 +347,7 @@ function LeituraPage() {
       if (aiFallbackRef.current) {
         setStatus("Reforçando leitura com IA…");
         try {
-          const image = canvas.toDataURL("image/jpeg", 0.6);
+          const image = original.toDataURL("image/jpeg", 0.88);
           const result = await parse({ data: { image, ...listsRef.current } });
           if (result.items.length > 0) {
             lastSigRef.current = sig;
@@ -735,7 +737,13 @@ function LeituraPage() {
           <div className="flex flex-wrap gap-2">
             <Button
               onClick={() => void confirm()}
-              disabled={applyMovement.isPending || !pending.refId || !pending.sizeId}
+              disabled={
+                applyMovement.isPending ||
+                !pending.refId ||
+                !pending.sizeId ||
+                pending.ambiguous ||
+                lowest < 0.9
+              }
               className="min-w-0 flex-1"
             >
               {queue.length > 0 ? "Confirmar e ir para o próximo" : "Confirmar e voltar à câmera"}
