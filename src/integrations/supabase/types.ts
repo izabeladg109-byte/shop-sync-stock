@@ -937,6 +937,24 @@ export type Database = {
         }
         Returns: boolean
       }
+      preview_filtered_history: {
+        Args: {
+          p_category_id?: string
+          p_color_id?: string
+          p_direction?: string
+          p_from: string
+          p_kind?: string
+          p_kit_id?: string
+          p_movement_id?: string
+          p_order?: string
+          p_platform_id?: string
+          p_size_id?: string
+          p_sku_id?: string
+          p_table: string
+          p_to: string
+        }
+        Returns: number
+      }
       purge_filtered_history:
         | {
             Args: {
