@@ -32,9 +32,10 @@ export async function getOcrWorker(): Promise<Worker> {
       }
       const w = worker as Worker;
       await w.setParameters({
-        // 11 = texto esparso. Packing lists misturam tabela, códigos e blocos
-        // desalinhados; este modo preserva palavras que o modo de coluna corta.
-        tessedit_pageseg_mode: "11",
+        // 4 = coluna única de textos com tamanhos variados: é o caso das
+        // etiquetas/packing lists. O modo 6 antigo tratava a etiqueta como um
+        // bloco uniforme e perdia as linhas da tabela de itens.
+        tessedit_pageseg_mode: "4",
         preserve_interword_spaces: "1",
         user_defined_dpi: "300",
       });
@@ -65,23 +66,6 @@ export async function recognizeCanvas(canvas: HTMLCanvasElement): Promise<LocalO
   const worker = await getOcrWorker();
   const { data } = await worker.recognize(canvas);
   return { text: data.text ?? "", confidence: (data.confidence ?? 0) / 100 };
-}
-
-/** Cópia independente para que o próximo frame não altere o quadro em OCR. */
-export function copyCanvas(source: HTMLCanvasElement): HTMLCanvasElement {
-  const copy = document.createElement("canvas");
-  copy.width = source.width;
-  copy.height = source.height;
-  copy.getContext("2d")?.drawImage(source, 0, 0);
-  return copy;
-}
-
-/** Variante binarizada usada somente se o quadro original não validar. */
-export function binaryVariant(source: HTMLCanvasElement, boost = false): HTMLCanvasElement {
-  const copy = copyCanvas(source);
-  const ctx = copy.getContext("2d", { willReadFrequently: true });
-  if (ctx) binarize(ctx, copy.width, copy.height, boost);
-  return copy;
 }
 
 /**

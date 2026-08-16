@@ -107,10 +107,7 @@ type PurgeTable = (typeof PURGE_TABLES)[number]["table"];
 
 type StorageInfo = {
   database_bytes: number;
-  reusable_bytes: number;
-  storage_files: number;
-  storage_bytes: number;
-  tables: { name: string; bytes: number; rows: number; reusable_bytes?: number }[];
+  tables: { name: string; bytes: number; rows: number }[];
 };
 
 function formatBytes(bytes: number) {
@@ -245,13 +242,12 @@ function ConfiguracoesPage() {
   const catalog = useQuery({
     queryKey: ["export-catalog"],
     queryFn: async () => {
-      const [cats, skus, colors, sizes, kits, platforms] = await Promise.all([
+      const [cats, skus, colors, sizes, kits] = await Promise.all([
         supabase.from("categories").select("id,name").order("position"),
         supabase.from("skus").select("id,seller_sku,name,category_id").order("position"),
         supabase.from("colors").select("id,name,sku_id"),
         supabase.from("sizes").select("id,name,sku_id"),
         supabase.from("kits").select("id,name,sku_id"),
-        supabase.from("platforms").select("id,name").is("deleted_at", null),
       ]);
       const map = new Map<string, string>();
       for (const c of cats.data ?? []) map.set(c.id, c.name);
@@ -264,9 +260,6 @@ function ConfiguracoesPage() {
         categories: cats.data ?? [],
         skus: skus.data ?? [],
         kits: kits.data ?? [],
-        colors: colors.data ?? [],
-        sizes: sizes.data ?? [],
-        platforms: platforms.data ?? [],
       };
     },
     staleTime: 60_000,
@@ -463,13 +456,6 @@ function ConfiguracoesPage() {
   const [pSku, setPSku] = useState("all");
   const [pDirection, setPDirection] = useState("all");
   const [pOrder, setPOrder] = useState("");
-  const [pCategory, setPCategory] = useState("all");
-  const [pColor, setPColor] = useState("all");
-  const [pSize, setPSize] = useState("all");
-  const [pKit, setPKit] = useState("all");
-  const [pPlatform, setPPlatform] = useState("all");
-  const [pKind, setPKind] = useState("all");
-  const [pMovement, setPMovement] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmText, setConfirmText] = useState("");
 
@@ -479,7 +465,6 @@ function ConfiguracoesPage() {
   const supportsSku = purgeTable === "movements" || purgeTable === "stock_edits";
   const supportsDirection = purgeTable === "movements";
   const supportsOrder = purgeTable === "movements" || purgeTable === "packing_reads";
-  const supportsProductDetails = purgeTable !== "audit_logs";
 
   const applyPurgeFilters = <T,>(query: T): T => {
     let q = query as unknown as {
@@ -497,36 +482,18 @@ function ConfiguracoesPage() {
   };
 
   const preview = useQuery({
-    queryKey: ["purge-preview", purgeTable, purgeFrom, purgeTo, pSku, pDirection, pOrder, pCategory, pColor, pSize, pKit, pPlatform, pMovement, pKind],
+    queryKey: ["purge-preview", purgeTable, purgeFrom, purgeTo, pSku, pDirection, pOrder],
     enabled: new Date(purgeTo) > new Date(purgeFrom),
     queryFn: async () => {
-      const [{ data: count, error: countError }, { data, error }] = await Promise.all([
-        supabase.rpc("preview_filtered_history", {
-          p_table: purgeTable,
-          p_from: purgeFrom,
-          p_to: purgeTo,
-          p_sku_id: supportsSku && pSku !== "all" ? pSku : null,
-          p_direction: supportsDirection && pDirection !== "all" ? pDirection : null,
-          p_order: supportsOrder && pOrder.trim() ? pOrder.trim() : null,
-          p_category_id: pCategory === "all" ? null : pCategory,
-          p_color_id: pColor === "all" ? null : pColor,
-          p_size_id: pSize === "all" ? null : pSize,
-          p_kit_id: pKit === "all" ? null : pKit,
-          p_platform_id: pPlatform === "all" ? null : pPlatform,
-          p_movement_id: pMovement.trim() || null,
-          p_kind: pKind === "all" ? null : pKind,
-        } as never),
-        applyPurgeFilters(
+      const { data, count, error } = await applyPurgeFilters(
         supabase
           .from(purgeTable as never)
-          .select("*")
+          .select("*", { count: "exact" })
           .order("created_at", { ascending: false })
           .limit(20),
-        ),
-      ]);
-      if (countError) throw countError;
+      );
       if (error) throw error;
-      return { count: Number(count ?? 0), sample: (data ?? []) as Row[] };
+      return { count: count ?? 0, sample: (data ?? []) as Row[] };
     },
   });
 
@@ -540,26 +507,14 @@ function ConfiguracoesPage() {
         p_direction: supportsDirection && pDirection !== "all" ? pDirection : null,
         p_order: supportsOrder && pOrder.trim() ? pOrder.trim() : null,
         p_confirm: "EXCLUIR",
-        p_category_id: pCategory === "all" ? null : pCategory,
-        p_color_id: pColor === "all" ? null : pColor,
-        p_size_id: pSize === "all" ? null : pSize,
-        p_kit_id: pKit === "all" ? null : pKit,
-        p_platform_id: pPlatform === "all" ? null : pPlatform,
-        p_movement_id: pMovement.trim() || null,
-        p_kind: pKind === "all" ? null : pKind,
       } as never);
       if (error) throw new Error(error.message);
-      const result = data as unknown as {
-        found: number; deleted: number; remaining: number; files_deleted: number;
-        files_failed: number; physical_bytes_freed: number; reusable_bytes_created: number;
-      };
-      if (result.remaining !== 0 || result.deleted !== result.found) {
-        throw new Error(`Exclusão não confirmada: ${result.remaining} registro(s) restante(s).`);
-      }
-      return result;
+      return data as unknown as { found: number; deleted: number };
     },
     onSuccess: (result) => {
-      toast.success(`${result.deleted} de ${result.found} excluídos; 0 restantes. Espaço físico liberado agora: ${formatBytes(result.physical_bytes_freed)}.`);
+      toast.success(
+        `${result.deleted} de ${result.found} registro(s) encontrado(s) foram excluídos.`,
+      );
       setConfirmOpen(false);
       setConfirmText("");
       void qc.invalidateQueries();
@@ -633,8 +588,7 @@ function ConfiguracoesPage() {
         </ul>
         <p className="text-xs text-muted-foreground">
           O sistema não guarda imagens nem arquivos: as fotos da câmera são processadas na hora e
-          descartadas. Exclusões liberam espaço interno para reutilização imediata; o tamanho físico
-          do banco diminui apenas durante a manutenção automática. Espaço reutilizável atual: {formatBytes(storage.data?.reusable_bytes ?? 0)}.
+          descartadas. Os valores são recalculados automaticamente após cada limpeza.
         </p>
 
         <ul className="space-y-2">
@@ -879,71 +833,6 @@ function ConfiguracoesPage() {
                 placeholder="Opcional"
               />
             </div>
-          )}
-          {supportsProductDetails && (
-            <>
-              <div className="space-y-1.5">
-                <Label>Categoria</Label>
-                <Select value={pCategory} onValueChange={setPCategory}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas</SelectItem>
-                    {(catalog.data?.categories ?? []).map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Cor</Label>
-                <Select value={pColor} onValueChange={setPColor}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas</SelectItem>
-                    {(catalog.data?.colors ?? []).filter((item) => pSku === "all" || item.sku_id === pSku).map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Tamanho</Label>
-                <Select value={pSize} onValueChange={setPSize}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    {(catalog.data?.sizes ?? []).filter((item) => pSku === "all" || item.sku_id === pSku).map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Kit</Label>
-                <Select value={pKit} onValueChange={setPKit}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    {(catalog.data?.kits ?? []).filter((item) => pSku === "all" || item.sku_id === pSku).map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Plataforma</Label>
-                <Select value={pPlatform} onValueChange={setPPlatform}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas</SelectItem>
-                    {(catalog.data?.platforms ?? []).map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Item</Label>
-                <Select value={pKind} onValueChange={setPKind}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="all">Unidades e kits</SelectItem><SelectItem value="unit">Unidade</SelectItem><SelectItem value="kit">Kit</SelectItem></SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="purge-movement">ID da movimentação</Label>
-                <Input id="purge-movement" value={pMovement} onChange={(event) => setPMovement(event.target.value)} placeholder="Opcional" />
-              </div>
-            </>
           )}
         </div>
 

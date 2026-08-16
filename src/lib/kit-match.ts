@@ -1,4 +1,4 @@
-import { deburr } from "@/lib/color-names";
+import { bestMatch, similarity } from "@/lib/color-names";
 import { kitColorsOf, type Color, type Kit, type KitColor, type Size, type Sku } from "@/lib/erp";
 
 /**
@@ -44,9 +44,6 @@ export type Catalog = {
 };
 
 const sig = (ids: string[]) => [...new Set(ids)].sort().join("|");
-const exact = (a: string, b: string) =>
-  deburr(a).trim().toUpperCase().replace(/\s+/g, " ") ===
-  deburr(b).trim().toUpperCase().replace(/\s+/g, " ");
 
 /** Divide textos como "PRETO + MARROM" ou "KIT PRETO/BEGE" em partes. */
 export function splitColorText(text: string): string[] {
@@ -66,17 +63,17 @@ export function resolveLine(line: OcrLine, cat: Catalog): Resolved | null {
   if (skus.length === 0) return null;
 
   // ---- SKU -------------------------------------------------------------
-  const skuMatches = skus.filter((s) => exact(line.sku, s.seller_sku));
-  if (skuMatches.length !== 1 || line.confidence.sku < 0.7) return null;
-  const sku = skuMatches[0];
-  if (!sku) return null;
-  const skuId = sku.id;
+  const bySku = line.sku ? bestMatch(line.sku, skus, (s) => s.seller_sku) : null;
+  const byName = line.sku ? bestMatch(line.sku, skus, (s) => s.name) : null;
+  const skuHit = bySku && (!byName || bySku.score >= byName.score) ? bySku : byName;
+  if (!skuHit || skuHit.score < 0.9 || line.confidence.sku < 0.7) return null;
+  const skuId = skuHit.item.id;
 
   // ---- Tamanho ---------------------------------------------------------
   const skuSizes = sizes.filter((s) => s.sku_id === skuId);
-  const sizeMatches = skuSizes.filter((s) => exact(line.size, s.name));
-  const size = sizeMatches.length === 1 ? sizeMatches[0] : null;
-  if (!size || line.confidence.size < 0.7) return null;
+  const sizeHit = line.size ? bestMatch(line.size, skuSizes, (s) => s.name) : null;
+  const size = sizeHit?.item;
+  if (!size || (sizeHit?.score ?? 0) < 0.9 || line.confidence.size < 0.7) return null;
 
   // ---- Cores lidas -> cores cadastradas do SKU -------------------------
   const skuColors = colors.filter((c) => c.sku_id === skuId);
@@ -85,10 +82,9 @@ export function resolveLine(line: OcrLine, cat: Catalog): Resolved | null {
   const parts = line.colors.flatMap((c) => splitColorText(c));
   const matched: { color: Color; score: number }[] = [];
   for (const name of parts) {
-    const hits = skuColors.filter((color) => exact(name, color.name));
-    const hit = hits.length === 1 ? hits[0] : null;
-    if (hit && !matched.some((m) => m.color.id === hit.id)) {
-      matched.push({ color: hit, score: 0.98 });
+    const hit = bestMatch(name, skuColors, (c) => c.name);
+    if (hit && hit.score >= 0.88 && !matched.some((m) => m.color.id === hit.item.id)) {
+      matched.push({ color: hit.item, score: hit.score });
     }
   }
   const matchedIds = matched.map((m) => m.color.id);
@@ -101,8 +97,8 @@ export function resolveLine(line: OcrLine, cat: Catalog): Resolved | null {
     matchedColorIds: matchedIds,
     raw: `${line.sku} · ${line.colors.join(" + ")} · ${line.size} x${line.qty}`,
     confBase: {
-      sku: Math.min(line.confidence.sku, 0.98),
-      size: Math.min(line.confidence.size, 0.98),
+      sku: Math.min(line.confidence.sku, skuHit.score),
+      size: Math.min(line.confidence.size, sizeHit.score),
       qty: line.confidence.qty,
     },
   };
@@ -182,6 +178,26 @@ export function resolveLine(line: OcrLine, cat: Catalog): Resolved | null {
       true,
       compositions.map((c) => c.kit.id),
     );
+  }
+
+  // ---- Uma cor só: pode ser unidade ou kit citado pelo nome ------------
+  const joined = line.colors.join(" ").trim();
+  if (joined && skuKits.length > 0 && /kit/i.test(joined)) {
+    const scored = skuKits
+      .map((k) => ({ kit: k, score: similarity(joined, k.name) }))
+      .sort((a, b) => b.score - a.score);
+    const top = scored[0];
+    const second = scored[1];
+    if (top) {
+      return make(
+        "kit",
+        "",
+        Math.min(0.61, top.score),
+        "Kit citado, mas sem composição real suficiente",
+        true,
+        scored.filter((s) => s.score >= 0.5).map((s) => s.kit.id),
+      );
+    }
   }
 
   if (matched[0]) {
