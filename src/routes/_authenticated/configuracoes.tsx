@@ -497,18 +497,36 @@ function ConfiguracoesPage() {
   };
 
   const preview = useQuery({
-    queryKey: ["purge-preview", purgeTable, purgeFrom, purgeTo, pSku, pDirection, pOrder],
+    queryKey: ["purge-preview", purgeTable, purgeFrom, purgeTo, pSku, pDirection, pOrder, pCategory, pColor, pSize, pKit, pPlatform, pMovement, pKind],
     enabled: new Date(purgeTo) > new Date(purgeFrom),
     queryFn: async () => {
-      const { data, count, error } = await applyPurgeFilters(
+      const [{ data: count, error: countError }, { data, error }] = await Promise.all([
+        supabase.rpc("preview_filtered_history", {
+          p_table: purgeTable,
+          p_from: purgeFrom,
+          p_to: purgeTo,
+          p_sku_id: supportsSku && pSku !== "all" ? pSku : null,
+          p_direction: supportsDirection && pDirection !== "all" ? pDirection : null,
+          p_order: supportsOrder && pOrder.trim() ? pOrder.trim() : null,
+          p_category_id: pCategory === "all" ? null : pCategory,
+          p_color_id: pColor === "all" ? null : pColor,
+          p_size_id: pSize === "all" ? null : pSize,
+          p_kit_id: pKit === "all" ? null : pKit,
+          p_platform_id: pPlatform === "all" ? null : pPlatform,
+          p_movement_id: pMovement.trim() || null,
+          p_kind: pKind === "all" ? null : pKind,
+        } as never),
+        applyPurgeFilters(
         supabase
           .from(purgeTable as never)
-          .select("*", { count: "exact" })
+          .select("*")
           .order("created_at", { ascending: false })
           .limit(20),
-      );
+        ),
+      ]);
+      if (countError) throw countError;
       if (error) throw error;
-      return { count: count ?? 0, sample: (data ?? []) as Row[] };
+      return { count: Number(count ?? 0), sample: (data ?? []) as Row[] };
     },
   });
 
