@@ -17,7 +17,6 @@ import { parsePackingLabel } from "@/lib/ocr.functions";
 import { parseLabelText } from "@/lib/label-parse";
 import { ALL_PLATFORMS, usePlatformFilter } from "@/lib/platforms";
 import {
-  binarize,
   binaryVariant,
   copyCanvas,
   disposeOcrWorker,

@@ -479,6 +479,7 @@ function ConfiguracoesPage() {
   const supportsSku = purgeTable === "movements" || purgeTable === "stock_edits";
   const supportsDirection = purgeTable === "movements";
   const supportsOrder = purgeTable === "movements" || purgeTable === "packing_reads";
+  const supportsProductDetails = purgeTable !== "audit_logs";
 
   const applyPurgeFilters = <T,>(query: T): T => {
     let q = query as unknown as {
@@ -614,7 +615,8 @@ function ConfiguracoesPage() {
         </ul>
         <p className="text-xs text-muted-foreground">
           O sistema não guarda imagens nem arquivos: as fotos da câmera são processadas na hora e
-          descartadas. Os valores são recalculados automaticamente após cada limpeza.
+          descartadas. Exclusões liberam espaço interno para reutilização imediata; o tamanho físico
+          do banco diminui apenas durante a manutenção automática. Espaço reutilizável atual: {formatBytes(storage.data?.reusable_bytes ?? 0)}.
         </p>
 
         <ul className="space-y-2">
@@ -859,6 +861,71 @@ function ConfiguracoesPage() {
                 placeholder="Opcional"
               />
             </div>
+          )}
+          {supportsProductDetails && (
+            <>
+              <div className="space-y-1.5">
+                <Label>Categoria</Label>
+                <Select value={pCategory} onValueChange={setPCategory}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas</SelectItem>
+                    {(catalog.data?.categories ?? []).map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Cor</Label>
+                <Select value={pColor} onValueChange={setPColor}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas</SelectItem>
+                    {(catalog.data?.colors ?? []).filter((item) => pSku === "all" || item.sku_id === pSku).map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Tamanho</Label>
+                <Select value={pSize} onValueChange={setPSize}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    {(catalog.data?.sizes ?? []).filter((item) => pSku === "all" || item.sku_id === pSku).map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Kit</Label>
+                <Select value={pKit} onValueChange={setPKit}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    {(catalog.data?.kits ?? []).filter((item) => pSku === "all" || item.sku_id === pSku).map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Plataforma</Label>
+                <Select value={pPlatform} onValueChange={setPPlatform}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas</SelectItem>
+                    {(catalog.data?.platforms ?? []).map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Item</Label>
+                <Select value={pKind} onValueChange={setPKind}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="all">Unidades e kits</SelectItem><SelectItem value="unit">Unidade</SelectItem><SelectItem value="kit">Kit</SelectItem></SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="purge-movement">ID da movimentação</Label>
+                <Input id="purge-movement" value={pMovement} onChange={(event) => setPMovement(event.target.value)} placeholder="Opcional" />
+              </div>
+            </>
           )}
         </div>
 
