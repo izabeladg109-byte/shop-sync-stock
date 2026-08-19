@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import {
   toastWithUndo,
   useApplyMovement,
@@ -18,7 +20,6 @@ import { parseLabelText } from "@/lib/label-parse";
 import { ALL_PLATFORMS, usePlatformFilter } from "@/lib/platforms";
 import {
   binaryVariant,
-  copyCanvas,
   disposeOcrWorker,
   frameDifference,
   frameFingerprint,
@@ -177,6 +178,21 @@ function LeituraPage() {
   const [pending, setPending] = useState<Pending | null>(null);
   /** Demais itens da mesma etiqueta, confirmados em sequência. */
   const [queue, setQueue] = useState<Pending[]>([]);
+  const originalPendingRef = useRef<Pending | null>(null);
+  const retryVariantRef = useRef(false);
+
+  const feedback = useQuery({
+    queryKey: ["ocr-feedback"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("ocr_feedback")
+        .select("pattern_signature,sku_id,kind,ref_id,size_id,qty,correction_count")
+        .order("correction_count", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+    staleTime: 60_000,
+  });
 
   const lists = useMemo(
     () => ({
@@ -253,8 +269,20 @@ function LeituraPage() {
         setStatus("Não foi possível identificar a etiqueta com segurança.");
         return false;
       }
+      const first = resolved[0]!;
+      const learned = feedback.data?.find((row) => row.pattern_signature === first.patternSignature);
+      const learnedValid = learned && learned.sku_id === first.skuId &&
+        sizes.some((s) => s.id === learned.size_id && s.sku_id === learned.sku_id) &&
+        (learned.kind === "kit"
+          ? kits.some((k) => k.id === learned.ref_id && k.sku_id === learned.sku_id)
+          : colors.some((c) => c.id === learned.ref_id && c.sku_id === learned.sku_id));
+      const suggested: Pending = learnedValid
+        ? { ...first, kind: learned.kind, refId: learned.ref_id, sizeId: learned.size_id, qty: learned.qty,
+            ambiguous: false, conf: { ...first.conf, ref: 0.89, qty: 0.89 }, reason: "Sugestão baseada em correção anterior" }
+        : first;
       pausedRef.current = true;
-      setPending(resolved[0]!);
+      originalPendingRef.current = first;
+      setPending(suggested);
       setQueue(resolved.slice(1));
       setStatus(
         resolved.length > 1
@@ -264,7 +292,7 @@ function LeituraPage() {
       beep();
       return true;
     },
-    [resolve],
+    [resolve, feedback.data, sizes, kits, colors],
   );
 
   const scan = useCallback(async () => {
@@ -312,18 +340,10 @@ function LeituraPage() {
 
       // OCR no quadro original primeiro. A binarização só é tentada quando o
       // original não valida, pois em etiquetas nítidas ela pode apagar traços.
-      const original = copyCanvas(canvas);
-      let { text, confidence } = await recognizeCanvas(original);
+      const capture = sharpModeRef.current || retryVariantRef.current ? binaryVariant(canvas, sharpModeRef.current) : canvas;
+      const { text, confidence } = await recognizeCanvas(capture);
       let items = parseLabelText(text, listsRef.current, confidence);
-      if (items.length === 0) {
-        const retry = await recognizeCanvas(binaryVariant(original, sharpModeRef.current));
-        const retryItems = parseLabelText(retry.text, listsRef.current, retry.confidence);
-        if (retryItems.length > 0 || retry.confidence > confidence) {
-          text = retry.text;
-          confidence = retry.confidence;
-          items = retryItems;
-        }
-      }
+      retryVariantRef.current = items.length === 0 ? !retryVariantRef.current : false;
       const sig = textSignature(text);
       if (sig.length < 10) {
         setStatus("Nada legível ainda — aproxime a etiqueta");
@@ -346,7 +366,7 @@ function LeituraPage() {
       if (aiFallbackRef.current) {
         setStatus("Reforçando leitura com IA…");
         try {
-          const image = original.toDataURL("image/jpeg", 0.88);
+          const image = canvas.toDataURL("image/jpeg", 0.88);
           const result = await parse({ data: { image, ...listsRef.current } });
           if (result.items.length > 0) {
             lastSigRef.current = sig;
@@ -433,6 +453,26 @@ function LeituraPage() {
         note: `Leitura: ${pending.raw}`,
         platform_id: platformId === ALL_PLATFORMS ? null : platformId,
       });
+      const original = originalPendingRef.current;
+      if (original && pending.patternSignature && (
+        original.skuId !== pending.skuId || original.kind !== pending.kind ||
+        original.refId !== pending.refId || original.sizeId !== pending.sizeId || original.qty !== pending.qty
+      )) {
+        const key = {
+          pattern_signature: pending.patternSignature,
+          sku_id: pending.skuId,
+          kind: pending.kind,
+          ref_id: pending.refId,
+          size_id: pending.sizeId,
+          qty: pending.qty,
+        };
+        const { data: existing } = await supabase.from("ocr_feedback").select("id,correction_count").match(key).maybeSingle();
+        if (existing) {
+          await supabase.from("ocr_feedback").update({ correction_count: existing.correction_count + 1, last_seen_at: new Date().toISOString() }).eq("id", existing.id);
+        } else {
+          await supabase.from("ocr_feedback").insert({ ...key, original_result: original as never });
+        }
+      }
       const sizeName = sizes.find((s) => s.id === pending.sizeId)?.name ?? "";
       const refName =
         pending.kind === "kit"
@@ -741,7 +781,7 @@ function LeituraPage() {
                 !pending.refId ||
                 !pending.sizeId ||
                 pending.ambiguous ||
-                lowest < 0.9
+                pending.qty <= 0 || pending.conf.qty <= 0 || lowest < 0.9
               }
               className="min-w-0 flex-1"
             >

@@ -6,6 +6,7 @@ export type ParsedLine = {
   colors: string[];
   size: string;
   qty: number;
+  pattern?: string;
   confidence: {
     sku: number;
     colors: number;

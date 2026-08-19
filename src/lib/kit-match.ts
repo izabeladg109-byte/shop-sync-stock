@@ -15,6 +15,7 @@ export type OcrLine = {
   colors: string[];
   size: string;
   qty: number;
+  pattern?: string;
   confidence: { sku: number; colors: number; size: number; qty: number };
 };
 
@@ -33,6 +34,7 @@ export type Resolved = {
   /** cores efetivamente reconhecidas no cadastro do SKU */
   matchedColorIds: string[];
   reason: string;
+  patternSignature: string;
 };
 
 export type Catalog = {
@@ -47,6 +49,30 @@ const sig = (ids: string[]) => [...new Set(ids)].sort().join("|");
 const exact = (a: string, b: string) =>
   deburr(a).trim().toUpperCase().replace(/\s+/g, " ") ===
   deburr(b).trim().toUpperCase().replace(/\s+/g, " ");
+
+const colorKey = (value: string) =>
+  deburr(value)
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+function colorCandidates(value: string, colors: Color[]): Color[] {
+  const wanted = colorKey(value);
+  if (!wanted) return [];
+  return colors.filter((color) => {
+    const known = colorKey(color.name);
+    return known === wanted || known.startsWith(`${wanted} `) || wanted.startsWith(`${known} `);
+  });
+}
+
+function assignments(groups: Color[][]): string[][] {
+  return groups.reduce<string[][]>(
+    (rows, group) => rows.flatMap((row) => group.map((color) => [...row, color.id])),
+    [[]],
+  );
+}
 
 /** Divide textos como "PRETO + MARROM" ou "KIT PRETO/BEGE" em partes. */
 export function splitColorText(text: string): string[] {
@@ -83,21 +109,18 @@ export function resolveLine(line: OcrLine, cat: Catalog): Resolved | null {
   const skuKits = kits.filter((k) => k.sku_id === skuId);
 
   const parts = line.colors.flatMap((c) => splitColorText(c));
-  const matched: { color: Color; score: number }[] = [];
-  for (const name of parts) {
-    const hits = skuColors.filter((color) => exact(name, color.name));
-    const hit = hits.length === 1 ? hits[0] : null;
-    if (hit && !matched.some((m) => m.color.id === hit.id)) {
-      matched.push({ color: hit, score: 0.98 });
-    }
-  }
-  const matchedIds = matched.map((m) => m.color.id);
-  const colorScore = matched.length ? matched.reduce((a, m) => a + m.score, 0) / matched.length : 0;
+  const candidateGroups = parts.map((name) => colorCandidates(name, skuColors)).filter((g) => g.length > 0);
+  const uniqueAssignments = assignments(candidateGroups)
+    .map((ids) => [...new Set(ids)])
+    .filter((ids) => ids.length === candidateGroups.length);
+  const uniqueDirect = candidateGroups.filter((group) => group.length === 1).map((group) => group[0]!);
+  const matchedIds = uniqueDirect.map((color) => color.id);
+  const colorScore = candidateGroups.length === parts.length && parts.length > 0 ? 0.98 : 0;
 
   const base = {
     skuId,
     sizeId: size.id,
-    qty: line.qty > 0 ? Math.floor(line.qty) : 1,
+    qty: line.qty > 0 ? Math.floor(line.qty) : 0,
     matchedColorIds: matchedIds,
     raw: `${line.sku} · ${line.colors.join(" + ")} · ${line.size} x${line.qty}`,
     confBase: {
@@ -105,6 +128,7 @@ export function resolveLine(line: OcrLine, cat: Catalog): Resolved | null {
       size: Math.min(line.confidence.size, 0.98),
       qty: line.confidence.qty,
     },
+    patternSignature: line.pattern ?? "",
   };
 
   const make = (
@@ -126,6 +150,7 @@ export function resolveLine(line: OcrLine, cat: Catalog): Resolved | null {
     candidates,
     matchedColorIds: base.matchedColorIds,
     reason,
+    patternSignature: base.patternSignature,
   });
 
   // ---- Composições cadastradas ----------------------------------------
@@ -134,58 +159,43 @@ export function resolveLine(line: OcrLine, cat: Catalog): Resolved | null {
     ids: kitColorsOf(k.id, kitColors, colors).map((c) => c.id),
   }));
 
-  if (matchedIds.length >= 2) {
-    const wanted = sig(matchedIds);
-    const exact = compositions.filter((c) => sig(c.ids) === wanted);
-    if (exact.length === 1) {
-      return make("kit", exact[0]!.kit.id, colorScore, "Composição idêntica ao kit cadastrado");
+  if (candidateGroups.length >= 2) {
+    const valid = compositions.filter((composition) =>
+      uniqueAssignments.some((ids) => sig(ids) === sig(composition.ids)),
+    );
+    if (valid.length === 1) {
+      const chosen = valid[0]!;
+      return {
+        ...make("kit", chosen.kit.id, colorScore, "Composição resolvida pelos relacionamentos cadastrados"),
+        matchedColorIds: chosen.ids,
+      };
     }
-    if (exact.length > 1) {
+    if (valid.length > 1) {
       return make(
         "kit",
         "",
         colorScore * 0.5,
-        "Mais de um kit com a mesma composição",
+        "Mais de uma composição cadastrada corresponde às cores lidas",
         true,
-        exact.map((c) => c.kit.id),
+        valid.map((c) => c.kit.id),
       );
     }
-
-    // nenhum kit exato: kits que contêm todas as cores lidas
-    const supersets = compositions.filter((c) => matchedIds.every((id) => c.ids.includes(id)));
-    if (supersets.length === 1) {
-      return make(
-        "kit",
-        "",
-        colorScore * 0.6,
-        "A etiqueta não trouxe a composição completa do kit",
-        true,
-        supersets.map((c) => c.kit.id),
-      );
-    }
-    if (supersets.length > 1) {
-      return make(
-        "kit",
-        "",
-        colorScore * 0.5,
-        "Várias composições possíveis para estas cores",
-        true,
-        supersets.map((c) => c.kit.id),
-      );
-    }
-    // cores lidas não formam nenhum kit cadastrado
     return make(
       "kit",
       "",
       colorScore * 0.4,
       "Nenhum kit cadastrado com estas cores",
       true,
-      compositions.map((c) => c.kit.id),
+      compositions.filter((c) => candidateGroups.every((group) => group.some((color) => c.ids.includes(color.id)))).map((c) => c.kit.id),
     );
   }
 
-  if (matched[0]) {
-    return make("unit", matched[0].color.id, matched[0].score, "Cor única reconhecida");
+  const single = candidateGroups[0] ?? [];
+  if (single.length === 1) {
+    return make("unit", single[0]!.id, 0.98, "Cor única reconhecida");
+  }
+  if (single.length > 1) {
+    return make("unit", "", 0.4, "Mais de uma cor cadastrada corresponde ao texto", true, single.map((c) => c.id));
   }
 
   return make("unit", "", 0.2, "Cor não reconhecida no cadastro", true, []);

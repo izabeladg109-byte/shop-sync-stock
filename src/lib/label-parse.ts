@@ -65,7 +65,7 @@ function findQty(line: string): { qty: number; conf: number } {
     const n = Number(m?.[1]);
     if (Number.isFinite(n) && n > 0 && n < 500) return { qty: n, conf: 0.92 };
   }
-  return { qty: 1, conf: 0 };
+  return { qty: 0, conf: 0 };
 }
 
 /**
@@ -212,6 +212,7 @@ export function parseLabelText(text: string, lists: Lists, baseConf = 0.7): Pars
       colors: colors.values.length > 0 ? colors.values : kit ? [kit.value] : [],
       size: size.value,
       qty: qty.qty,
+      pattern: norm(line),
       confidence: {
         sku: Math.min(sku.conf, baseConf),
         colors: Math.min(colors.conf || kit?.conf || 0, baseConf),
@@ -236,6 +237,7 @@ export function parseLabelText(text: string, lists: Lists, baseConf = 0.7): Pars
         colors: colors.values.length > 0 ? colors.values : [kit!.value],
         size: size.value,
         qty: qty.qty,
+        pattern: norm(flat),
         confidence: {
           sku: Math.min(sku.conf, baseConf),
           colors: Math.min(colors.conf || kit?.conf || 0, baseConf),
