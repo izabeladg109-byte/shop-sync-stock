@@ -477,22 +477,7 @@ function ConfiguracoesPage() {
   const supportsSku = purgeTable === "movements" || purgeTable === "stock_edits";
   const supportsDirection = purgeTable === "movements";
   const supportsOrder = purgeTable === "movements" || purgeTable === "packing_reads";
-  const supportsProductDetails = purgeTable !== "audit_logs";
-
-  const applyPurgeFilters = <T,>(query: T): T => {
-    let q = query as unknown as {
-      gte: (c: string, v: string) => unknown;
-      lte: (c: string, v: string) => unknown;
-      eq: (c: string, v: string) => unknown;
-      ilike: (c: string, v: string) => unknown;
-    };
-    q = q.gte("created_at", purgeFrom) as typeof q;
-    q = q.lte("created_at", purgeTo) as typeof q;
-    if (supportsSku && pSku !== "all") q = q.eq("sku_id", pSku) as typeof q;
-    if (supportsDirection && pDirection !== "all") q = q.eq("direction", pDirection) as typeof q;
-    if (supportsOrder && pOrder.trim()) q = q.ilike("order_ref", `%${pOrder.trim()}%`) as typeof q;
-    return q as unknown as T;
-  };
+  const supportsProductDetails = true;
 
   const preview = useQuery({
     queryKey: ["purge-preview", purgeTable, purgeFrom, purgeTo, pSku, pDirection, pOrder, pCategory, pColor, pSize, pKit, pPlatform, pMovement, pKind],

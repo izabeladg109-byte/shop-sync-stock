@@ -417,12 +417,14 @@ function LeituraPage() {
     setQueue((rest) => {
       const [next, ...others] = rest;
       if (next) {
+        originalPendingRef.current = next;
         setPending(next);
         pausedRef.current = true;
         setStatus(`Confirme a baixa — faltam ${rest.length} item(ns) desta etiqueta`);
         return others;
       }
       setPending(null);
+      originalPendingRef.current = null;
       pausedRef.current = false;
       setStatus("Procurando etiqueta…");
       return [];
@@ -433,6 +435,7 @@ function LeituraPage() {
   function discardAll() {
     setQueue([]);
     setPending(null);
+    originalPendingRef.current = null;
     pausedRef.current = false;
     setStatus("Procurando etiqueta…");
   }
