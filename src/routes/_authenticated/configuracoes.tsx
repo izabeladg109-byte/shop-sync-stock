@@ -57,9 +57,6 @@ export const Route = createFileRoute("/_authenticated/configuracoes")({
   }),
 });
 
-/** Cota contratada do banco (Lovable Cloud). */
-const STORAGE_QUOTA = 5 * 1024 ** 3;
-
 const TABLE_LABELS: Record<string, string> = {
   audit_logs: "Registro de auditoria",
   barcodes: "Códigos de barras",
@@ -100,13 +97,13 @@ const PURGE_TABLES = [
   { table: "movements", label: "Movimentações" },
   { table: "packing_reads", label: "Leituras de packing list" },
   { table: "stock_edits", label: "Edições de estoque" },
-  { table: "audit_logs", label: "Registro de auditoria" },
 ] as const;
 
 type PurgeTable = (typeof PURGE_TABLES)[number]["table"];
 
 type StorageInfo = {
   database_bytes: number;
+  public_schema_bytes: number;
   reusable_bytes: number;
   storage_files: number;
   storage_bytes: number;
@@ -206,8 +203,9 @@ function ConfiguracoesPage() {
     [storage.data],
   );
 
-  const used = storage.data?.database_bytes ?? 0;
-  const usedPct = Math.min(100, (used / STORAGE_QUOTA) * 100);
+  const totalMeasured = storage.data?.database_bytes ?? 0;
+  const used = (storage.data?.public_schema_bytes ?? 0) + (storage.data?.storage_bytes ?? 0);
+  const usedPct = totalMeasured > 0 ? Math.min(100, (used / totalMeasured) * 100) : 0;
 
   /** Consumo separado por categoria. */
   const byCategory = useMemo(() => {
@@ -227,9 +225,9 @@ function ConfiguracoesPage() {
     const leituras = sum(["packing_reads"]);
     const auditoria = sum(["audit_logs"]);
     const contas = sum(["profiles", "user_prefs", "user_roles"]);
-    const outros = Math.max(0, used - cadastros - operacao - leituras - auditoria - contas);
+    const outros = Math.max(0, (storage.data?.public_schema_bytes ?? 0) - cadastros - operacao - leituras - auditoria - contas);
     return [
-      { label: "Banco de dados (total)", bytes: used },
+      { label: "Dados do aplicativo", bytes: storage.data?.public_schema_bytes ?? 0 },
       { label: "Cadastros", bytes: cadastros },
       { label: "Estoque e movimentações", bytes: operacao },
       { label: "Leituras de etiqueta", bytes: leituras },
@@ -239,7 +237,7 @@ function ConfiguracoesPage() {
       { label: "Arquivos e backups", bytes: 0 },
       { label: "Outros dados", bytes: outros },
     ];
-  }, [storage.data, used]);
+  }, [storage.data]);
 
   // ---- catálogo para filtros e nomes -----------------------------------
   const catalog = useQuery({
@@ -479,28 +477,13 @@ function ConfiguracoesPage() {
   const supportsSku = purgeTable === "movements" || purgeTable === "stock_edits";
   const supportsDirection = purgeTable === "movements";
   const supportsOrder = purgeTable === "movements" || purgeTable === "packing_reads";
-  const supportsProductDetails = purgeTable !== "audit_logs";
-
-  const applyPurgeFilters = <T,>(query: T): T => {
-    let q = query as unknown as {
-      gte: (c: string, v: string) => unknown;
-      lte: (c: string, v: string) => unknown;
-      eq: (c: string, v: string) => unknown;
-      ilike: (c: string, v: string) => unknown;
-    };
-    q = q.gte("created_at", purgeFrom) as typeof q;
-    q = q.lte("created_at", purgeTo) as typeof q;
-    if (supportsSku && pSku !== "all") q = q.eq("sku_id", pSku) as typeof q;
-    if (supportsDirection && pDirection !== "all") q = q.eq("direction", pDirection) as typeof q;
-    if (supportsOrder && pOrder.trim()) q = q.ilike("order_ref", `%${pOrder.trim()}%`) as typeof q;
-    return q as unknown as T;
-  };
+  const supportsProductDetails = true;
 
   const preview = useQuery({
     queryKey: ["purge-preview", purgeTable, purgeFrom, purgeTo, pSku, pDirection, pOrder, pCategory, pColor, pSize, pKit, pPlatform, pMovement, pKind],
     enabled: new Date(purgeTo) > new Date(purgeFrom),
     queryFn: async () => {
-      const [{ data: count, error: countError }, { data, error }] = await Promise.all([
+      const [{ data: count, error: countError }, { data: ids, error: idsError }] = await Promise.all([
         supabase.rpc("preview_filtered_history", {
           p_table: purgeTable,
           p_from: purgeFrom,
@@ -516,15 +499,22 @@ function ConfiguracoesPage() {
           p_movement_id: pMovement.trim() || null,
           p_kind: pKind === "all" ? null : pKind,
         } as never),
-        applyPurgeFilters(
-        supabase
-          .from(purgeTable as never)
-          .select("*")
-          .order("created_at", { ascending: false })
-          .limit(20),
-        ),
+        supabase.rpc("list_filtered_history_ids", {
+          p_table: purgeTable, p_from: purgeFrom, p_to: purgeTo,
+          p_sku_id: supportsSku && pSku !== "all" ? pSku : null,
+          p_direction: supportsDirection && pDirection !== "all" ? pDirection : null,
+          p_order: supportsOrder && pOrder.trim() ? pOrder.trim() : null,
+          p_category_id: pCategory === "all" ? null : pCategory,
+          p_color_id: pColor === "all" ? null : pColor, p_size_id: pSize === "all" ? null : pSize,
+          p_kit_id: pKit === "all" ? null : pKit, p_platform_id: pPlatform === "all" ? null : pPlatform,
+          p_movement_id: pMovement.trim() || null, p_kind: pKind === "all" ? null : pKind, p_limit: 20,
+        } as never),
       ]);
       if (countError) throw countError;
+      if (idsError) throw idsError;
+      const selectedIds = (ids ?? []) as string[];
+      if (selectedIds.length === 0) return { count: Number(count ?? 0), sample: [] as Row[] };
+      const { data, error } = await supabase.from(purgeTable as never).select("*").in("id", selectedIds).order("created_at", { ascending: false });
       if (error) throw error;
       return { count: Number(count ?? 0), sample: (data ?? []) as Row[] };
     },
@@ -551,7 +541,7 @@ function ConfiguracoesPage() {
       if (error) throw new Error(error.message);
       const result = data as unknown as {
         found: number; deleted: number; remaining: number; files_deleted: number;
-        files_failed: number; physical_bytes_freed: number; reusable_bytes_created: number;
+        files_failed: number; physical_bytes_freed: number; reusable_bytes_created: number; logical_bytes_deleted: number;
       };
       if (result.remaining !== 0 || result.deleted !== result.found) {
         throw new Error(`Exclusão não confirmada: ${result.remaining} registro(s) restante(s).`);
@@ -559,7 +549,7 @@ function ConfiguracoesPage() {
       return result;
     },
     onSuccess: (result) => {
-      toast.success(`${result.deleted} de ${result.found} excluídos; 0 restantes. Espaço físico liberado agora: ${formatBytes(result.physical_bytes_freed)}.`);
+      toast.success(`${result.deleted} de ${result.found} excluídos; 0 restantes. Dados removidos: ${formatBytes(result.logical_bytes_deleted)}.`);
       setConfirmOpen(false);
       setConfirmText("");
       void qc.invalidateQueries();
@@ -570,9 +560,18 @@ function ConfiguracoesPage() {
 
   async function exportBeforePurge() {
     try {
-      const { data, error } = await applyPurgeFilters(
-        supabase.from(purgeTable as never).select("*"),
-      );
+      const { data: ids, error: idsError } = await supabase.rpc("list_filtered_history_ids", {
+        p_table: purgeTable, p_from: purgeFrom, p_to: purgeTo,
+        p_sku_id: supportsSku && pSku !== "all" ? pSku : null, p_direction: supportsDirection && pDirection !== "all" ? pDirection : null,
+        p_order: supportsOrder && pOrder.trim() ? pOrder.trim() : null, p_category_id: pCategory === "all" ? null : pCategory,
+        p_color_id: pColor === "all" ? null : pColor, p_size_id: pSize === "all" ? null : pSize, p_kit_id: pKit === "all" ? null : pKit,
+        p_platform_id: pPlatform === "all" ? null : pPlatform, p_movement_id: pMovement.trim() || null,
+        p_kind: pKind === "all" ? null : pKind, p_limit: 10000,
+      } as never);
+      if (idsError) throw idsError;
+      const selectedIds = (ids ?? []) as string[];
+      if (selectedIds.length === 0) return void toast.info("Nada para exportar.");
+      const { data, error } = await supabase.from(purgeTable as never).select("*").in("id", selectedIds);
       if (error) throw error;
       const rows = humanize((data ?? []) as Row[]);
       if (rows.length === 0) return void toast.info("Nada para exportar.");
@@ -611,9 +610,9 @@ function ConfiguracoesPage() {
         <Progress value={usedPct} className="h-2.5" />
         <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {[
-            { label: "Total", value: formatBytes(STORAGE_QUOTA) },
+            { label: "Total medido", value: formatBytes(totalMeasured) },
             { label: "Usado", value: formatBytes(used) },
-            { label: "Disponível", value: formatBytes(Math.max(0, STORAGE_QUOTA - used)) },
+            { label: "Sistema/overhead", value: formatBytes(Math.max(0, totalMeasured - used)) },
             { label: "Registros", value: totalRows.toLocaleString("pt-BR") },
           ].map((c) => (
             <li key={c.label} className="rounded-lg border border-border p-2">
@@ -632,9 +631,9 @@ function ConfiguracoesPage() {
           ))}
         </ul>
         <p className="text-xs text-muted-foreground">
-          O sistema não guarda imagens nem arquivos: as fotos da câmera são processadas na hora e
-          descartadas. Exclusões liberam espaço interno para reutilização imediata; o tamanho físico
-          do banco diminui apenas durante a manutenção automática. Espaço reutilizável atual: {formatBytes(storage.data?.reusable_bytes ?? 0)}.
+          As fotos da câmera são processadas na hora e descartadas. O total medido vem da infraestrutura;
+          “usado” soma tabelas do aplicativo e objetos reais na nuvem. Exclusões removem as linhas imediatamente,
+          enquanto a redução do arquivo físico ocorre durante a manutenção automática.
         </p>
 
         <ul className="space-y-2">
