@@ -412,6 +412,73 @@ export type Database = {
           },
         ]
       }
+      ocr_feedback: {
+        Row: {
+          correction_count: number
+          created_at: string
+          id: string
+          kind: Database["public"]["Enums"]["mov_kind"]
+          last_seen_at: string
+          original_result: Json
+          pattern_signature: string
+          qty: number
+          ref_id: string
+          size_id: string
+          sku_id: string
+          user_id: string
+        }
+        Insert: {
+          correction_count?: number
+          created_at?: string
+          id?: string
+          kind: Database["public"]["Enums"]["mov_kind"]
+          last_seen_at?: string
+          original_result?: Json
+          pattern_signature: string
+          qty: number
+          ref_id: string
+          size_id: string
+          sku_id: string
+          user_id?: string
+        }
+        Update: {
+          correction_count?: number
+          created_at?: string
+          id?: string
+          kind?: Database["public"]["Enums"]["mov_kind"]
+          last_seen_at?: string
+          original_result?: Json
+          pattern_signature?: string
+          qty?: number
+          ref_id?: string
+          size_id?: string
+          sku_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ocr_feedback_size_id_fkey"
+            columns: ["size_id"]
+            isOneToOne: false
+            referencedRelation: "kits_available"
+            referencedColumns: ["size_id"]
+          },
+          {
+            foreignKeyName: "ocr_feedback_size_id_fkey"
+            columns: ["size_id"]
+            isOneToOne: false
+            referencedRelation: "sizes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ocr_feedback_sku_id_fkey"
+            columns: ["sku_id"]
+            isOneToOne: false
+            referencedRelation: "skus"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       packing_reads: {
         Row: {
           barcode: string | null
@@ -921,6 +988,26 @@ export type Database = {
         Returns: Json
       }
       db_storage_info: { Args: never; Returns: Json }
+      filtered_history_ids: {
+        Args: {
+          p_category_id?: string
+          p_color_id?: string
+          p_direction?: string
+          p_from: string
+          p_kind?: string
+          p_kit_id?: string
+          p_movement_id?: string
+          p_order?: string
+          p_platform_id?: string
+          p_size_id?: string
+          p_sku_id?: string
+          p_table: string
+          p_to: string
+        }
+        Returns: {
+          id: string
+        }[]
+      }
       form_kits: {
         Args: {
           p_consume_units?: boolean
@@ -936,6 +1023,25 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      list_filtered_history_ids: {
+        Args: {
+          p_category_id?: string
+          p_color_id?: string
+          p_direction?: string
+          p_from: string
+          p_kind?: string
+          p_kit_id?: string
+          p_limit?: number
+          p_movement_id?: string
+          p_order?: string
+          p_platform_id?: string
+          p_size_id?: string
+          p_sku_id?: string
+          p_table: string
+          p_to: string
+        }
+        Returns: string[]
       }
       preview_filtered_history: {
         Args: {
@@ -955,38 +1061,25 @@ export type Database = {
         }
         Returns: number
       }
-      purge_filtered_history:
-        | {
-            Args: {
-              p_confirm?: string
-              p_direction?: string
-              p_from: string
-              p_order?: string
-              p_sku_id?: string
-              p_table: string
-              p_to: string
-            }
-            Returns: Json
-          }
-        | {
-            Args: {
-              p_category_id?: string
-              p_color_id?: string
-              p_confirm?: string
-              p_direction?: string
-              p_from: string
-              p_kind?: string
-              p_kit_id?: string
-              p_movement_id?: string
-              p_order?: string
-              p_platform_id?: string
-              p_size_id?: string
-              p_sku_id?: string
-              p_table: string
-              p_to: string
-            }
-            Returns: Json
-          }
+      purge_filtered_history: {
+        Args: {
+          p_category_id?: string
+          p_color_id?: string
+          p_confirm?: string
+          p_direction?: string
+          p_from: string
+          p_kind?: string
+          p_kit_id?: string
+          p_movement_id?: string
+          p_order?: string
+          p_platform_id?: string
+          p_size_id?: string
+          p_sku_id?: string
+          p_table: string
+          p_to: string
+        }
+        Returns: Json
+      }
       purge_period_data: {
         Args: { p_confirm: string; p_from: string; p_to: string }
         Returns: Json
